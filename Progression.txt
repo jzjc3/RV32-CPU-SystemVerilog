@@ -1,0 +1,5 @@
+5 stages for one instruction
+3 stages for one instruction: Fetch -> Decode & Execute -> Memory & Writeback
+Pipelined CPU
+
+main reason: memory access requires 2 cycles. The first cycle is for retrieving data and putting it on the data line, the next cycle is when the data is actually ready to be used
