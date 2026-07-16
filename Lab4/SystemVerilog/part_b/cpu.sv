@@ -133,7 +133,9 @@ module cpu #(
     logic [31:0] ea_reg;
 
     // Memory
-    logic [31:0] mem_reg;
+    logic [31:0] retrieved_line; // Get: 4 byte data retrieved from Memory  | should be updated in ff of EXECUTE STAGE; should be used in MEMORY STAGE comb 
+    logic [31:0] written_mem_addr; // Update mem: the memory address (the entire 4 bits that will be updated) | should be updated in 
+    logic [31:0] updated_mem_line; // Update mem: the 4 byte (next) memory line  that will be stored to the the written_mem_addr
 
     initial begin
         $readmemb(INIT_FILE, mem);
@@ -272,7 +274,9 @@ module cpu #(
         endcase
     end
 
-    // other registers other than 1) memory access(instr, mem_reg)  2) writeback (registers, state update, pc update)
+    // Not really any combinational logic at Memory Stage
+
+    // other registers other than 1) memory access(instr, retrieved_line)  2) writeback (registers, state update, pc update)
     // it turns out only Execute stage left
     always_ff @(posedge clk) begin
         if (rst) begin
@@ -287,8 +291,7 @@ module cpu #(
         end
     end
     
-    // RAM access, Fetch and Memory stage
-    always_ff @(posedge clk) begin  // less strict, allow us to initilize RAM
+    always_ff @(posedge clk) begin : BRAM
         if (rst) begin
             instr <= '0;
         end
@@ -302,14 +305,14 @@ module cpu #(
                         // LOAD from memory
                         OP_LOAD: begin
                             case(func3)
-                                3'b000 , 3'b100: mem_reg <= mem[ea_reg[31:2]][ea_reg[1:0]*8 +: 8]; // always byte aligned, so no need to case
+                                3'b000 , 3'b100: retrieved_line <= mem[ea_reg[31:2]][ea_reg[1:0]*8 +: 8]; // always byte aligned, so no need to case
                                 3'b001 , 3'b101: begin
                                     case (ea_reg[1])
-                                        1'b0: mem_reg <= mem[ea_reg[31:2]][15:0];
-                                        1'b1: mem_reg <= mem[ea_reg[31:2]][31:16];
+                                        1'b0: retrieved_line <= mem[ea_reg[31:2]][15:0];
+                                        1'b1: retrieved_line <= mem[ea_reg[31:2]][31:16];
                                     endcase
                                 end
-                                3'b010: mem_reg <= mem[ea_reg[31:2]];
+                                3'b010: retrieved_line <= mem[ea_reg[31:2]];
                             endcase
                         end
                         // STORE to memory operation
@@ -339,9 +342,29 @@ module cpu #(
         end 
     end
 
-    // Writeback stage
-    // pc: 1) update next_pc in execute stage  2) update pc to next_pc during writeback satge
-    always_ff @(posedge clk) begin
+    // result after execution stage: alu_reg, ea_reg
+    always_ff @(posedge clk) begin: Intermediary_FlipFlop
+        if (rst) begin
+        end
+        else
+            case (state)
+                EXECUTE: begin
+                    alu_reg <= alu_result;
+                    ea_reg  <= ea;
+                end 
+            endcase 
+    end
+
+    always_ff @(posedge clk) begin: Registers
+        if (rst) begin
+        end
+        else if (state == WRITEBACK)
+        
+    end
+
+    always_ff @
+
+    always_ff @(posedge clk) begin:
         if (rst) begin
             pc    <= '0;
             state <= FETCH;
@@ -366,11 +389,11 @@ module cpu #(
                     end
                     OP_LOAD: begin
                         case(func3)
-                            3'b000: regs[rd] <= {{(24){mem_reg[7]}}, mem_reg[7:0]};
-                            3'b001: regs[rd] <= {{(16){mem_reg[15]}}, mem_reg[15:0]};
-                            3'b010: regs[rd] <= mem_reg;
-                            3'b100: regs[rd] <= {{(24){1'b0}}, mem_reg[7:0]};
-                            3'b101: regs[rd] <= {{(16){1'b0}}, mem_reg[15:0]};
+                            3'b000: regs[rd] <= {{(24){retrieved_line[7]}}, retrieved_line[7:0]};
+                            3'b001: regs[rd] <= {{(16){retrieved_line[15]}}, retrieved_line[15:0]};
+                            3'b010: regs[rd] <= retrieved_line;
+                            3'b100: regs[rd] <= {{(24){1'b0}}, retrieved_line[7:0]};
+                            3'b101: regs[rd] <= {{(16){1'b0}}, retrieved_line[15:0]};
                         endcase
                     end
 
