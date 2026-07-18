@@ -4,30 +4,29 @@ module system_call #(
     input rst,
     input clk,
 
-    input  logic ecall_en; // during writeback stage as well
-    input  logic ebreak_en; // during writeback stage
-    input  logic ecall_sel; // from register x17, 0: tx, 1: rx
+    input  logic ecall_en, // during writeback stage as well
+    input  logic ebreak_en, // during writeback stage
+    input  logic ecall_sel, // from register x17, 0: tx, 1: rx
 
     input  logic rx_empty,
     input  logic [WIDTH-1:0] rx_data,
     output logic rx_pop,
     output logic [31:0] reg10_out, // feed to register x10
 
-    input  logic reg10_in, // from register x10
+    input  logic [31:0] reg10_in, // from register x10
     input  logic tx_full,
-    output logic [31:0] tx_data,
+    output logic [7:0] tx_data,
     output logic tx_push,
 
     output logic halt_signal,
     output logic block_signal
-    
     );
 
     always_comb begin
         // default:
         rx_pop       = 1'b0;
         reg10_out    = 32'b0;
-        tx_data      = 32'b0;
+        tx_data      = 8'b0;
         tx_push      = 1'b0;
         halt_signal  = 1'b0;
         block_signal = 1'b0;

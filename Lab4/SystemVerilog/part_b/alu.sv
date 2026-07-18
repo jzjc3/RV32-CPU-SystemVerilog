@@ -1,5 +1,7 @@
 import cpu_pkg::*;
 
+// brief: alu calculation output, pc calculation, bra, access effective address calculation
+
 module alu(
     // all inputs are from decoder/controller. some are formatted
     input  logic [6:0]  opcode,

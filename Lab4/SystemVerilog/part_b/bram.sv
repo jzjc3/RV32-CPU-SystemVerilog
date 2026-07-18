@@ -1,15 +1,17 @@
 import cpu_pkg::*;
 
-module bram(
+module bram #(
+    parameter INIT_FILE = "mems/test0.mem"
+)(
     input  logic rst,
     input  logic clk,
     input  logic mem1_ren, // at mem1 state, can only read
     input  logic mem2_wen, // at mem2 state: 1) if it's load: won't write back, 2) if it's store: will write back
     input  logic mem_fetch_en,
-    input  logic [MEM_ADDR_BIT-1:0] pc_aligned;
+    input  logic [MEM_ADDR_BIT-1:0] pc,
     // note: if the instruction is STORE, for both mem1 and mem2 stage the address into BRAM will be eff_addr
     input  logic [MEM_ADDR_BIT-1:0] eff_addr, // we are only using [MEM_ADDR_BIT-1:2] of eff_addr b/c we want to extract the entire 32 bits
-    input  logic [31:0] mem2_data_in; // data to be stored into BRAM at mem2 stage
+    input  logic [31:0] mem2_data_in, // data to be stored into BRAM at mem2 stage. from bram_formatting.sv
     output logic [31:0] mem1_data, // data output from bram at mem1 stage
     output logic [31:0] instr_fetch  // instruction output from bram at fetch stage
 );
@@ -17,14 +19,16 @@ module bram(
     logic [31:0] mem [0:MEM_LINE-1];
     
     logic [MEM_ADDR_BIT-3:0] eff_addr_aligned;
-    eff_addr_aligned = eff_addr[MEM_ADDR_BIT-1:2];
-
+    assign eff_addr_aligned = eff_addr[MEM_ADDR_BIT-1:2];
+    
+    logic [MEM_ADDR_BIT-1:2] pc_aligned;
+    assign pc_aligned = pc[MEM_ADDR_BIT-1:2];
     
     initial begin
         $readmemb(INIT_FILE, mem);
     end
     
-    always_ff @(posedge_clk) begin
+    always_ff @(posedge clk) begin
         if (rst) begin
             mem1_data <= '0;
             instr_fetch <= '0;
@@ -34,7 +38,7 @@ module bram(
             mem1_data <= mem[eff_addr_aligned];
         end
 
-        else if (mem2_ren) begin
+        else if (mem2_wen) begin
             mem[eff_addr_aligned] <= mem2_data_in;
         end
 

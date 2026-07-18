@@ -14,6 +14,9 @@ module controller(
   input  logic [31:0]  instr,  // from bram.sv 
   input  logic         halt_signal,  // from system_call.sv
   input  logic         block_signal, // from system_call.sv
+  input  logic         ecall_sel,
+
+  output state_t       state,
 
   output logic [6:0]   opcode,
   output logic [4:0]   rd,
@@ -33,39 +36,28 @@ module controller(
   output logic reg_wen,
   output logic mem1_ren,
   output logic mem2_wen,
-  output logic fetch_en // bram fetch instruction enable
+  output logic fetch_en, // bram fetch instruction enable
   output logic ecall_en,
   output logic ebreak_en
 );
 
-  typedef enum logic [2:0]{
-      FETCH,
-      DECODE,
-      EXECUTE,
-      MEM1,
-      MEM2, 
-      WRITEBACK,
-      HALT
-  } state_t;
-
-  state_t state = FETCH;
   state_t next_state;
 
   always_comb begin : decode_stage
       opcode = instr[6:0];
       rd     = instr[11:7];
       func3  = instr[14:12];
-      rs1    = (opcode == OP_SYSTEM) ? 31'd17 : instr[19:15];
-      rs2    = (opcode == OP_SYSTEM) ? 31'd10 : instr[24:20];
+      rs1    = (opcode == OP_SYSTEM) ? 5'd17 : instr[19:15];
+      rs2    = (opcode == OP_SYSTEM) ? 5'd10 : instr[24:20];
       func7  = instr[31:25];
   end 
 
-  always_comb begin: immediate_extraction
-      imm_I = instr[31:20];
-      imm_S = {instr[31:25], instr[11:7]};
-      imm_B = {instr[31], instr[7], instr[30:25], instr[11:8], 1'b0};
+  always_comb begin: immediate_extraction_and_sext
+      imm_I = {{20{instr[31]}}, instr[31:20]};
+      imm_S = {{20{instr[31]}}, instr[31:25], instr[11:7]};
+      imm_B = {{19{instr[31]}}, instr[31], instr[7], instr[30:25], instr[11:8], 1'b0};
       imm_U = {instr[31:12], 12'b0};
-      imm_J = {instr[31], instr[30:21], instr[20], instr[19:12], 1'b0};
+      imm_J = {{11{instr[31]}}, instr[31], instr[19:12], instr[20], instr[30:21], 1'b0};
   end
 
   always_comb begin : FSM
@@ -76,10 +68,7 @@ module controller(
         case (state)
           FETCH: next_state = DECODE;
           DECODE: begin 
-            case (opcode)
-              OP_SYSTEM: next_state = WRITEBACK;
-              default:   next_state = EXECUTE;
-            endcase 
+            next_state = EXECUTE;
           end
           EXECUTE: begin
             case (opcode)
@@ -106,10 +95,20 @@ module controller(
   end
 
   // Output SIGNAL / DEVICE CONTROL AND ACTIVATION SIGNAL generation
-  assign  pc_en     = (state == WRITEBACK);
-  assign  reg_wen   = (state == WRITEBACK);
-  assign  mem1_ren  = (state == MEM1);
-  assign  mem2_wen  = (state == MEM2);
+  assign  pc_en     = (state == WRITEBACK) && !block_signal && !halt_signal;
+  assign  reg_wen   = (state == WRITEBACK) &&
+                   (
+                       opcode == OP_REGISTER ||
+                       opcode == OP_IMM      ||
+                       opcode == OP_LOAD     ||
+                       opcode == OP_LUI      ||
+                       opcode == OP_AUIPC    ||
+                       opcode == OP_JAL      ||
+                       opcode == OP_JALR     ||
+                       (ecall_en && ecall_sel && !block_signal)
+                   );  // the rest of the states get to WRITEBACK but will only update PC during writeback
+  assign  mem1_ren = (state == MEM1) && ((opcode == OP_LOAD) || (opcode == OP_STORE));
+  assign  mem2_wen = (state == MEM2) && (opcode == OP_STORE);
   assign  fetch_en  = (state == FETCH);
   assign  ecall_en  = (state == WRITEBACK) & (instr == 32'h00000073);
   assign  ebreak_en = (state == WRITEBACK) & (instr == 32'h00100073);
