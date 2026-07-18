@@ -8,13 +8,16 @@ module bram(
     input  logic mem_fetch_en,
     input  logic [MEM_ADDR_BIT-1:0] pc_aligned;
     // note: if the instruction is STORE, for both mem1 and mem2 stage the address into BRAM will be eff_addr
-    input  logic [MEM_ADDR_BIT-1:0] eff_addr_aligned, // we are only using [MEM_ADDR_BIT-1:2] of eff_addr b/c we want to extract the entire 32 bits
+    input  logic [MEM_ADDR_BIT-1:0] eff_addr, // we are only using [MEM_ADDR_BIT-1:2] of eff_addr b/c we want to extract the entire 32 bits
     input  logic [31:0] mem2_data_in; // data to be stored into BRAM at mem2 stage
     output logic [31:0] mem1_data, // data output from bram at mem1 stage
     output logic [31:0] instr_fetch  // instruction output from bram at fetch stage
 );
 
     logic [31:0] mem [0:MEM_LINE-1];
+    
+    logic [MEM_ADDR_BIT-3:0] eff_addr_aligned;
+    eff_addr_aligned = eff_addr[MEM_ADDR_BIT-1:2];
 
     
     initial begin

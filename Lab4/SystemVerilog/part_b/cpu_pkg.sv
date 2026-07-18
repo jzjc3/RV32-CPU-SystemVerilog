@@ -3,16 +3,6 @@ package cpu_pkg;
     parameter int MEM_LINE = MEM_SIZE_BYTES / 4;
     parameter int MEM_ADDR_BIT = $clog2(MEM_SIZE_BYTES);
 
-    typedef enum logic [2:0]{
-        FETCH,
-        DECODE,
-        EXECUTE,
-        MEM1,
-        MME2, 
-        WRITEBACK,
-        HALT
-    } state_t;
-
     typedef enum logic [6:0]{
         OP_REGISTER = 7'b0110011, // R-type
         OP_IMM      = 7'b0010011, // I-type

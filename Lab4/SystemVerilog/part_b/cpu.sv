@@ -362,7 +362,6 @@ module cpu #(
         
     end
 
-    always_ff @
 
     always_ff @(posedge clk) begin:
         if (rst) begin

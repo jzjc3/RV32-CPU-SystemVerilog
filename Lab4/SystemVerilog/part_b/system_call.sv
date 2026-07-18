@@ -18,7 +18,6 @@ module system_call #(
     output logic [31:0] tx_data,
     output logic tx_push,
 
-    output logic ecall_writeback_signal, // sent to register
     output logic halt_signal,
     output logic block_signal
     
@@ -32,7 +31,6 @@ module system_call #(
         tx_push      = 1'b0;
         halt_signal  = 1'b0;
         block_signal = 1'b0;
-        ecall_writeback_signal = 1'b0;
 
         if (ecall_en) begin
             if (ecall_sel) begin // rx
@@ -41,7 +39,6 @@ module system_call #(
                     rx_pop = 1'b1;  // the oldest value, ie. rdata, will be deleted from fifo only at the next cylce (b/c of the ff logic of fifo.sv)
                     block_signal = 1'b0;
                     reg10_out = {24'b0, rx_data};
-                    ecall_writeback_signal = 1'b1;
                 end
             end
 

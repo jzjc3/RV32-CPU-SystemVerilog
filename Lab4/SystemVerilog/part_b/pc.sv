@@ -14,6 +14,7 @@ module PC (
     input  logic [MEM_ADDR_BIT-1:0] pc_from_alu,
     output logic [MEM_ADDR_BIT-1:0] pc
 );
+
     localparam logic [MEM_ADDR_BIT-1:0] next_pc;
 
     // combinational logic

@@ -1,29 +1,9 @@
-/** controller.sv
-  *     instruction field extraction
-  *     instruction type determination
-  *     sequential: FSM
-  *     control signal output generation
-  */
-
 module register_formatting (
-    // Inputs
-    input  logic clk,
-    input  logic rst,
-
-    // Outputs
-    output logic result
+    input  logic [31:0] reg_data,
+    output logic signed [31:0] signed_reg_data,
+    output logic [4:0] reg_data_5bit;
 );
-
-    // 1. Parameters and localparams
-
-    // 2. Type definitions, such as enums
-
-    // 3. Internal signals
-
-    // 4. Combinational logic
-
-    // 5. Sequential logic
-
-    // 6. Output assignments
+    assign signed_reg_data = $signed(reg_data);
+    assign reg_data_5bit = reg_data[4:0];
 
 endmodule
