@@ -10,10 +10,11 @@ module writeback_mux (
     input  logic        block_signal,
     input  logic [31:0] syscall_out,
 
-    output logic [31:0] normal_writeback_data,
     output logic [31:0] final_reg_wdata,
     output logic [4:0]  final_reg_w_ind
 );
+
+    logic [31:0] normal_writeback_data;
 
     always_comb begin
         normal_writeback_data = 32'b0;

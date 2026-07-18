@@ -1,42 +1,24 @@
-// cpu.sv -- THIS IS THE FILE YOU EDIT. Implement your CPU here.
-// New here? What a CPU is and the rules it must follow: ../../doc/CPU_explained.md
-// It runs your program (loaded from INIT_FILE) and reaches the outside world
-// ONLY through the byte mailbox below (the rx/tx FIFOs from Part A). Everything
-// inside -- memory, registers, datapath, how you decode and execute -- is yours.
-//
-//   clk      : system clock.
-//   rst      : on-board button 0 (active-high). Use it however you like.
-//
-//   input  side (a byte arrived from the Pi  -> your getchar / scanf):
-//     rx_empty : 1 = nothing is waiting
-//     rx_data  : the oldest waiting byte (valid while rx_empty is 0)
-//     rx_pop   : raise for one clock to consume rx_data
-//
-//   output side (a byte you send back to the Pi -> your putchar / print):
-//     tx_full  : 1 = no room to send right now
-//     tx_data  : the byte you want to send
-//     tx_push  : raise for one clock to send tx_data
+// instr_reg
+// alu_calc_reg
+// eff_addr_calc_reg
+// pc_calc_reg
+// mem_data_reg
+// store_data_reg
 
+// Q: how do we know if a signal need to be latched
+// A: 1) If a value is produced in one FSM state but used in a later FSM state, latch it.
+//    2) If the producer is synchronous memory/BRAM, expect to latch or wait for its output.
+//      (because we cannot use it right away if it's not latched, cuz it's synchronous access)
 
-/** Instructions
-  * how to pull an instruction apart into its fields and decide what it is,
-  * how to build the register file, the ALU, and the memory ports,
-  * whether each instruction takes one clock cycle or several,
-  * Does the CPU need an FSM? What are its states?
-  * how to drive the mailbox handshake (rx_pop, tx_push) at the right moments,
-  * how ecall to actually stall your processor on empty/full.
-  */ 
+import cpu_pkg::*;
 
-// testing: fetch/ecall, the ALU, branches, loads/stores, scanf/print, mul, / and %, recursion, arrays, then the comprehensive test9
-
-module cpu #(
-    parameter int MEM_SIZE_BYTES = 65536,    // byte-addressable memory size (64 KiB)
+module cpu_top #(
     // INIT_FILE = the program this CPU runs (the .mem you flash). $readmemb resolves
     // this path against Vivado's RUN directory, not the source tree -- read the synth
     // log to confirm it was picked up; if not, use an absolute path. (A path Vivado
     // can't find loads memory as all-zero, so the CPU just runs nothing.)
-    parameter     INIT_FILE      = "mems/test0.mem"
-) (
+    parameter INIT_FILE = "mems/test0.mem"
+)(
     input  logic       clk,
     input  logic       rst,
     input  logic       rx_empty,
@@ -45,391 +27,256 @@ module cpu #(
     input  logic       tx_full,
     output logic [7:0] tx_data,
     output logic       tx_push
-);
-    localparam MEM_LINE = 65536 / 4;
-    localparam PC_LENGTH = $clog2(MEM_SIZE_BYTES);
-    
-    // for SHIFT and IMMEDIATE instruction
-    function automatic logic [31:0] sext12(
-        input logic [11:0] value
-    );
-        sext12 = {{(20){value[11]}}, value};
-    endfunction
-    
-    // for BRANCH instruction
-    function automatic logic [31:0] sext13(
-            input logic [12:0] value
-        );
-            sext13 = {{(19){value[12]}}, value};
-    endfunction
-    
-    // for JUMP instruction
-    function automatic logic [31:0] sext21(
-        input logic [20:0] value
-    );
-        sext21 = {{(11){value[20]}}, value};
-    endfunction
+);  
+    /** ###########################
+        #### logic declaration ####
+        ########################### */
 
-    typedef enum logic [2:0]{
-        FETCH,
-        DECODE,
-        EXECUTE,
-        MEMORY,
-        WRITEBACK,
-        HALT
-    } state_t;
+    // FSM / Controller
+    state_t state;
 
-    typedef enum logic [6:0]{
-        OP_REGISTER = 7'b0110011,
-        OP_IMM      = 7'b0010011,
-        OP_LOAD     = 7'b0000011,
-        OP_STORE    = 7'b0100011,
-        OP_BRANCH   = 7'B1100011,
-        OP_LUI      = 7'B0110111,
-        OP_AUIPC    = 7'b0010111,
-        OP_JAL      = 7'b1101111,
-        OP_JALR     = 7'b1100111,
-        OP_SYSTEM   = 7'b1110011
-    } opcode_t;
+    logic pc_en;
+    logic mem_fetch_en;
+    logic mem1_ren;
+    logic mem2_wen;
+    logic reg_wen;
+    logic ecall_en;
+    logic ebreak_en;
+    logic block_signal;
+    logic halt_signal;
 
-    // FSM (instead of pipelined CPU)
-    state_t state = FETCH;
-    state_t next_state;
+    // PC
+    logic [MEM_ADDR_BIT-1:0] pc;
+    logic [MEM_ADDR_BIT-1:0] pc_calc;
+    logic [MEM_ADDR_BIT-1:0] pc_calc_reg;
 
-    // Register
-    logic [31:0] regs [31:0];
-
-    // Memory
-    logic [PC_LENGTH-1:0] pc = 0;
-    logic [PC_LENGTH-1:0] next_pc;
-    /** logic declaration of "mem" order matters 
-      * this declaration makes mem[0] the first line of instruction
-      */
-    logic [31:0] mem [0:MEM_LINE-1]; // MEM_LENTGH lines, 32 bits per line
-
-    // Instruction / Fetch
-    logic [31:0] instr;
+    // Instruction
+    logic [31:0] instr_fetch;
 
     // Decode
-    logic [6:0]  opcode;
-    logic [4:0]  rd;
-    logic [2:0]  func3;
-    logic [4:0]  rs1;
-    logic [4:0]  rs2;
-    logic [31:0] rs1_data;
-    logic [31:0] rs2_data;
-    logic [6:0]  func7;
+    logic [6:0] opcode;
+    logic [4:0] rd;
+    logic [2:0] func3;
+    logic [4:0] rs1;
+    logic [4:0] rs2;
+    logic [6:0] func7;
 
-    logic [11:0] imm_I; // 12
-    logic [11:0] imm_S; // 12
-    logic [12:0] imm_B; // 13   // last bit is always 0 b/c alignment
-    logic [31:0] imm_U; // 32   // upper 20 bits
-    logic [20:0] imm_J; // 21   // last bit is always 0 b/c alignment
+    // Immediates
+    logic [31:0]  imm_I, imm_S, imm_B, imm_U, imm_J;
+    
+    // Register
+    logic [31:0] reg_data1;
+    logic [31:0] reg_data2;
 
-    // Execution
-    logic [31:0] alu_result;
-    logic [31:0] alu_reg;
-    logic [31:0] ea; // effective address
-    logic [31:0] ea_reg;
+    logic signed [31:0] s_rs1_data;
+    logic signed [31:0] s_rs2_data;
+    logic [4:0] rs1_data_5bit;
+    logic [4:0] rs2_data_5bit;
 
-    // Memory
-    logic [31:0] retrieved_line; // Get: 4 byte data retrieved from Memory  | should be updated in ff of EXECUTE STAGE; should be used in MEMORY STAGE comb 
-    logic [31:0] written_mem_addr; // Update mem: the memory address (the entire 4 bits that will be updated) | should be updated in 
-    logic [31:0] updated_mem_line; // Update mem: the 4 byte (next) memory line  that will be stored to the the written_mem_addr
+    // ALU outputs
+    logic [31:0] alu_calc;
+    logic [31:0] alu_calc_reg;
 
-    initial begin
-        $readmemb(INIT_FILE, mem);
-    end
+    logic [MEM_ADDR_BIT-1:0] eff_addr_calc;
+    logic [MEM_ADDR_BIT-1:0] eff_addr_calc_reg;
 
-    always_comb begin : FSM
-        next_state = HALT;
-        case (state)
-            FETCH: next_state = DECODE;
-            DECODE: next_state = EXECUTE;
-            EXECUTE: next_state = MEMORY;
-            MEMORY: next_state = WRITEBACK;
-            WRITEBACK: begin
-                if (opcode == 7'b1110011 & func3 == '0 & {func7, rs2} == 12'h73) begin // ecall
-                    next_state = HALT;
-                end 
-                else next_state = FETCH;
-            end
-            HALT: next_state = HALT;
-            default: next_state = HALT;
-        endcase
-    end
+    // BRAM
+    logic [31:0] mem1_data;
 
-    // Fetch stage: restrieving data from RAM is synchronous
+    // BRAM formatting
+    logic        bram_mode;
+    logic [31:0] formatted_mem_out;
 
-    always_comb begin : decode_stage
-        opcode = instr[6:0];
-        rd     = instr[11:7];
-        func3  = instr[14:12];
-        rs1    = instr[19:15];
-        rs2    = instr[24:20];
-        func7  = instr[31:25];
+    // Store source data
+    // value read from reg2, for sb sx sh 
+    // store instructions: store value from reg2 to memory
+    logic [31:0] store_data_reg; 
 
-        rs1_data = (rs1 == 5'd0) ? 32'd0 : regs[rs1];
-        rs2_data = (rs2 == 5'd0) ? 32'd0 : regs[rs2];
+    // System call
+    logic        ecall_sel;        // 0 tx, 1 rx
+    logic [31:0] syscall_out;     // reg10_out
 
-        imm_I = instr[31:20];
-        imm_S = {instr[31:25], instr[11:7]};
-        imm_B = {instr[31], instr[7], instr[30:25], instr[11:8], 1'b0};
-        imm_U = {instr[31:12], 12'b0};
-        imm_J = {instr[31], instr[30:21], instr[20], instr[19:12], 1'b0};
+    // Writeback mux (register write from ecall ro normal register writeback from alu)
+    logic [31:0] final_reg_wdata;
+    logic [4:0]  final_reg_w_ind;
 
-    end 
+    /** #################################
+        ######## logic assignment #######
+        ################################# */
+    assign bram_mode = (opcode == OP_STORE);
+    assign ecall_sel = (reg_data1 == 32'd1); // based on register x17, determine it's putchar or getchar
+    assign s_imm_I = $signed(imm_I);
 
-    // ALU
-    always_comb begin: execute_stage
-        alu_result = 32'd0;
-        ea         = 32'd0;
-        next_pc    = pc + 3'd4;
+    /** #################################
+        #### submodule instantiation ####
+        ################################# */
+    controller u_controller (
+        .clk(clk),
+        .rst(rst),
+        .instr(instr_fetch),
+        .halt_signal(halt_signal),
+        .block_signal(block_signal),
+        .ecall_sel(ecall_sel),
 
-        case(opcode)
-            OP_REGISTER: begin
-                case (func3)
-                    3'b000: begin
-                        case (func7)
-                            7'b0000000: alu_result = rs1_data + rs2_data; // add
-                            7'b0100000: alu_result = rs1_data - rs2_data; // sub
-                            7'b0000001: alu_result = rs1_data * rs2_data; // mul
-                            default:    alu_result = 32'd0;
-                        endcase
-                    end
-                    3'b001: alu_result = rs1_data << rs2_data[4:0]; // sll
-                    3'b010: alu_result = ($signed(rs1_data) < $signed(rs2_data)) ? 32'd1 : 32'd0; // slt
-                    3'b011: alu_result = (rs1_data < rs2_data) ? 32'd1 : 32'd0; // sltu
-                    3'b100: alu_result = rs1_data ^ rs2_data; // xor
-                    3'b101: begin
-                        case (func7)
-                            7'b0000000: alu_result = rs1_data >> rs2_data[4:0]; // srl
-                            7'b0100000: alu_result = $signed(rs1_data) >>> rs2_data[4:0]; // sra
-                            default:    alu_result = 32'd0;
-                        endcase
-                    end
-                    3'b110: alu_result = rs1_data | rs2_data; // or
-                    3'b111: alu_result = rs1_data & rs2_data; // and
-                    default: alu_result = 32'b0;
-                endcase
-            end
-            OP_IMM: begin
-                case (func3)
-                    // sign-extended
-                    3'b000: alu_result = rs1_data + sext12(imm_I); //addi
-                    3'b010: alu_result = ($signed(rs1_data) < $signed(sext12(imm_I))) ? 1:0; // slti
-                    3'b011: alu_result = (rs1_data < sext12(imm_I)) ? 1:0; //sltiu
-                    3'b100: alu_result = rs1_data ^ sext12(imm_I); //xori
-                    3'b110: alu_result = rs1_data | sext12(imm_I); // ori
-                    3'b111: alu_result = rs1_data & sext12(imm_I); // andi
+        .state(state),
 
-                    //shift-immediate
-                    3'b001: alu_result = rs1_data << imm_I[4:0];
-                    3'b101: 
-                        case(func7) 
-                            7'b0000000: alu_result = rs1_data >> imm_I[4:0];
-                            7'b0100000: alu_result = $signed(rs1_data) >>> imm_I[4:0];
-                        endcase
-                    default: alu_result = 32'b0;
-                endcase
-            end
-            OP_LOAD: begin
-                ea = rs1_data + sext12(imm_I);
-            end
-            OP_STORE: begin
-                ea = rs1_data + sext12(imm_S);   
-            end
-            OP_BRANCH: begin
-                case (func3)
-                    3'b000: next_pc = (rs1_data == rs2_data) ? pc + sext13(imm_B) : pc + 3'd4;
-                    3'b001: next_pc = (rs1_data != rs2_data) ? pc + sext13(imm_B) : pc + 3'd4;
-                    3'b100: next_pc = ($signed(rs1_data) < $signed(rs2_data)) ? pc + sext13(imm_B) : pc + 3'd4;
-                    3'b101: next_pc = ($signed(rs1_data) >= $signed(rs2_data)) ? pc + sext13(imm_B) : pc + 3'd4;
-                    3'b110: next_pc = (rs1_data < rs2_data) ? pc + sext13(imm_B) : pc + 3'd4;
-                    3'b111: next_pc = (rs1_data >= rs2_data) ? pc + sext13(imm_B) : pc + 3'd4;
-                    default: next_pc = pc + 3'd4;
-                endcase
-            end
-            OP_LUI: begin
-                alu_result = imm_U << 12;
-            end
-            OP_AUIPC: begin
-                alu_result = pc + (imm_U << 12);
-            end
-            OP_JAL: begin
-                alu_result = pc + 3'd4;
-                next_pc = pc + sext21(imm_J);
-            end
-            OP_JALR: begin
-                alu_result = pc + 3'd4;
-                next_pc = (rs1 + sext12(imm_I)) & (~(32'd1));
-            end
-            // System instruction isnot handled here. because the goal is to block the next instruction, so stop at teh writeback satge
-            // also, ecall is mostly influencing the writeback to register a0
-            default: begin // the only case is OP_SYSTEM
-                alu_result = 32'd0;
-                ea         = 32'd0;
-                next_pc    = pc + 3'd4;
-            end 
-        endcase
-    end
+        .opcode(opcode),
+        .rd(rd),
+        .func3(func3),
+        .rs1(rs1),
+        .rs2(rs2),
+        .func7(func7),
 
-    // Not really any combinational logic at Memory Stage
+        .imm_I(imm_I),
+        .imm_S(imm_S),
+        .imm_B(imm_B),
+        .imm_U(imm_U),
+        .imm_J(imm_J),
 
-    // other registers other than 1) memory access(instr, retrieved_line)  2) writeback (registers, state update, pc update)
-    // it turns out only Execute stage left
+        .pc_en(pc_en),
+        .reg_wen(reg_wen),
+        .mem1_ren(mem1_ren),
+        .mem2_wen(mem2_wen),
+        .fetch_en(mem_fetch_en),
+        .ecall_en(ecall_en),
+        .ebreak_en(ebreak_en)
+    );
+
+    register u_register (
+        .clk(clk),
+        .rst(rst),
+        .reg_wen(reg_wen),
+        .reg_r_ind1(rs1),
+        .reg_r_ind2(rs2),
+        .reg_w_ind(final_reg_w_ind),
+        .reg_wdata(final_reg_wdata),
+        .reg_data1(reg_data1),
+        .reg_data2(reg_data2)
+    );
+
+    register_formatting u_rs1_formatting (
+        .reg_data(reg_data1),
+        .signed_reg_data(s_rs1_data),
+        .reg_data_5bit(rs1_data_5bit)
+    );
+
+    register_formatting u_rs2_formatting (
+        .reg_data(reg_data2),
+        .signed_reg_data(s_rs2_data),
+        .reg_data_5bit(rs2_data_5bit)
+    );
+
+    alu u_alu (
+        .opcode(opcode),
+        .rd(rd),
+        .func3(func3),
+        .rs1_data(reg_data1),
+        .rs2_data(reg_data2),
+        .s_rs1_data(s_rs1_data),
+        .s_rs2_data(s_rs2_data),
+        .rs1_data_5bit(rs1_data_5bit),
+        .rs2_data_5bit(rs2_data_5bit),
+        .func7(func7),
+
+        .s_imm_I(s_imm_I),
+        .imm_I(imm_I),
+        .imm_S(imm_S),
+        .imm_B(imm_B),
+        .imm_U(imm_U),
+        .imm_J(imm_J),
+
+        .pc(pc),
+
+        .pc_calc(pc_calc),
+        .alu_calc(alu_calc),
+        .eff_addr_calc(eff_addr_calc)
+    );
+
+    PC u_pc (
+        .clk(clk),
+        .rst(rst),
+        .pc_en(pc_en),
+        .pc_from_alu(pc_calc_reg),
+        .pc(pc)
+    );
+
+    bram #(
+        .INIT_FILE(INIT_FILE)
+    ) u_bram (
+        .rst(rst),
+        .clk(clk),
+        .mem1_ren(mem1_ren),
+        .mem2_wen(mem2_wen),
+        .mem_fetch_en(mem_fetch_en),
+        .pc(pc),
+        .eff_addr(eff_addr_calc_reg),
+        .mem2_data_in(formatted_mem_out),
+        .mem1_data(mem1_data),
+        .instr_fetch(instr_fetch)
+    );
+
+    bram_formatting u_bram_formatting (
+        .mode(bram_mode),
+        .func3(func3),
+        .addr_offset(eff_addr_calc_reg[1:0]),
+        .mem_in(mem1_data),
+        .reg_in(store_data_reg),
+        .formatted_mem_out(formatted_mem_out)
+    );
+
+    system_call u_system_call (
+        .rst(rst),
+        .clk(clk),
+        .ecall_en(ecall_en),
+        .ebreak_en(ebreak_en),
+        .ecall_sel(ecall_sel),
+
+        .rx_empty(rx_empty),
+        .rx_data(rx_data),
+        .rx_pop(rx_pop),
+        .reg10_out(syscall_out),
+
+        .reg10_in(reg_data2),
+        .tx_full(tx_full),
+        .tx_data(tx_data),
+        .tx_push(tx_push),
+
+        .halt_signal(halt_signal),
+        .block_signal(block_signal)
+    );
+
+    writeback_mux u_writeback_mux (
+        .opcode(opcode),
+        .rd(rd),
+        .alu_calc_reg(alu_calc_reg),
+        .mem_out(formatted_mem_out),
+        .ecall_en(ecall_en),
+        .ecall_sel(ecall_sel),
+        .block_signal(block_signal),
+        .syscall_out(syscall_out),
+
+        .final_reg_wdata(final_reg_wdata),
+        .final_reg_w_ind(final_reg_w_ind)
+    );
+
+    // intermediate flip flops for latches over states
     always_ff @(posedge clk) begin
         if (rst) begin
-            alu_reg = '0;
-            ea_reg =  '0; // effective address (for accessing RAM), used for OP_LOAD, OP_STORE
+            alu_calc_reg      <= '0;
+            eff_addr_calc_reg <= '0;
+            pc_calc_reg       <= '0;
+            store_data_reg    <= '0;
         end
+
         else begin
+            // note: instr_fetch and mem1_data both retrieve from bram at the clock edge, so the new data is only available at the next cycle
             if (state == EXECUTE) begin
-                alu_reg <= alu_result;
-                ea_reg  <= ea;
+                alu_calc_reg      <= alu_calc;
+                eff_addr_calc_reg <= eff_addr_calc;
+                pc_calc_reg       <= pc_calc;
             end
-        end
-    end
-    
-    always_ff @(posedge clk) begin : BRAM
-        if (rst) begin
-            instr <= '0;
-        end
-        else begin
-            case (state)
-                FETCH: begin
-                    instr <= mem[pc[PC_LENGTH-1:2]]; // index = pc / 4;
-                end
-                MEMORY: begin
-                    case (opcode)
-                        // LOAD from memory
-                        OP_LOAD: begin
-                            case(func3)
-                                3'b000 , 3'b100: retrieved_line <= mem[ea_reg[31:2]][ea_reg[1:0]*8 +: 8]; // always byte aligned, so no need to case
-                                3'b001 , 3'b101: begin
-                                    case (ea_reg[1])
-                                        1'b0: retrieved_line <= mem[ea_reg[31:2]][15:0];
-                                        1'b1: retrieved_line <= mem[ea_reg[31:2]][31:16];
-                                    endcase
-                                end
-                                3'b010: retrieved_line <= mem[ea_reg[31:2]];
-                            endcase
-                        end
-                        // STORE to memory operation
-                        OP_STORE: begin
-                            case (func3) 
-                                // for alignment
-                                3'b000: begin // sb
-                                    case (ea_reg[1:0])
-                                        2'b00: mem[ea_reg[31:2]][7:0]   <= rs2_data[7:0];
-                                        2'b01: mem[ea_reg[31:2]][15:8]  <= rs2_data[7:0];
-                                        2'b10: mem[ea_reg[31:2]][23:16] <= rs2_data[7:0];
-                                        2'b11: mem[ea_reg[31:2]][31:24] <= rs2_data[7:0];
-                                    endcase 
-                                end 
-                                3'b001: begin // sh
-                                    case (ea_reg[1]) 
-                                        1'b0: mem[ea_reg[31:2]][15:0]  <= rs2_data[15:0];
-                                        1'b1: mem[ea_reg[31:2]][31:16] <= rs2_data[15:0];
-                                    endcase 
-                                end
-                                3'b010: mem[ea_reg[31:2]][31:0] <= rs2_data; // sw
-                            endcase
-                        end 
-                    endcase
-                end 
-            endcase
+            if (state == DECODE) store_data_reg <= reg_data2;
         end 
     end
 
-    // result after execution stage: alu_reg, ea_reg
-    always_ff @(posedge clk) begin: Intermediary_FlipFlop
-        if (rst) begin
-        end
-        else
-            case (state)
-                EXECUTE: begin
-                    alu_reg <= alu_result;
-                    ea_reg  <= ea;
-                end 
-            endcase 
-    end
-
-    always_ff @(posedge clk) begin: Registers
-        if (rst) begin
-        end
-        else if (state == WRITEBACK)
-        
-    end
-
-
-    always_ff @(posedge clk) begin:
-        if (rst) begin
-            pc    <= '0;
-            state <= FETCH;
-            tx_push <= '0;
-            rx_pop <= '0;
-            for (int i = 0; i < 32; i++) begin
-                regs[i] <= '0;
-            end
-        end
-        else begin
-            state <= next_state;
-            tx_push <= '0;
-            rx_pop <= '0;
-            if (state == WRITEBACK) begin
-                pc <= next_pc;
-
-                // update register, system (ecall, ebreak)
-                case (opcode)
-                    // standard case, write to rd after finish the entire instruciton duing the Writeback stage
-                    OP_REGISTER, OP_IMM, OP_LUI, OP_AUIPC, OP_JAL, OP_JALR: begin
-                        if (rd != '0) regs[rd] <= alu_reg; // x0 can never be written to
-                    end
-                    OP_LOAD: begin
-                        case(func3)
-                            3'b000: regs[rd] <= {{(24){retrieved_line[7]}}, retrieved_line[7:0]};
-                            3'b001: regs[rd] <= {{(16){retrieved_line[15]}}, retrieved_line[15:0]};
-                            3'b010: regs[rd] <= retrieved_line;
-                            3'b100: regs[rd] <= {{(24){1'b0}}, retrieved_line[7:0]};
-                            3'b101: regs[rd] <= {{(16){1'b0}}, retrieved_line[15:0]};
-                        endcase
-                    end
-
-                    // ecall, ebreak
-                    OP_SYSTEM: begin
-                        case(instr)
-                            32'h00000073: begin // ecall
-                            /** register x17 (a7), register x10 (a0)
-                            * x17 = 1: getchar, read one input byte into a0
-                            * x17 = 0: putchar, send the low byte of a0 to the output
-                            */
-                                if (regs[17] == 1'b0) begin
-                                    if (tx_full) state <= WRITEBACK;
-                                    else begin
-                                        tx_data <= regs[10][7:0];
-                                        tx_push <= 1'b1;
-                                    end
-                                end
-                                
-                                else begin
-                                    if (rx_empty) state <= WRITEBACK;
-                                    else begin
-                                        regs[10] <= {24'b0, rx_data};
-                                        rx_pop <= 1'b1;
-                                    end
-                                end
-                            end
-                            32'h00100073: begin // ebreak
-                                state <= HALT;
-                                pc <= pc;      // if halt, leave the pc as it is, do not update
-                            end
-                        endcase
-                    end
-
-                    //default: OP_STORE,OP_ BRANCHES
-                endcase 
-            end
-        end
-    end
-endmodule : cpu
+endmodule
