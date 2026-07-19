@@ -12,12 +12,12 @@
 
 import cpu_pkg::*;
 
-module cpu_top #(
+module cpu #(
     // INIT_FILE = the program this CPU runs (the .mem you flash). $readmemb resolves
     // this path against Vivado's RUN directory, not the source tree -- read the synth
     // log to confirm it was picked up; if not, use an absolute path. (A path Vivado
     // can't find loads memory as all-zero, so the CPU just runs nothing.)
-    parameter INIT_FILE = "mems/test0.mem"
+    parameter INIT_FILE = "mems/test3.mem"
 )(
     input  logic       clk,
     input  logic       rst,
@@ -52,6 +52,7 @@ module cpu_top #(
 
     // Instruction
     logic [31:0] instr_fetch;
+    logic [31:0] instr_reg;
 
     // Decode
     logic [6:0] opcode;
@@ -70,8 +71,28 @@ module cpu_top #(
 
     logic signed [31:0] s_rs1_data;
     logic signed [31:0] s_rs2_data;
+    logic signed [31:0] s_imm_I_reg;
     logic [4:0] rs1_data_5bit;
     logic [4:0] rs2_data_5bit;
+
+    // Decode pipeline registers
+    logic [6:0] opcode_reg;
+    logic [4:0] rd_reg;
+    logic [2:0] func3_reg;
+    logic [4:0] rs1_reg;
+    logic [4:0] rs2_reg;
+    logic [6:0] func7_reg;
+    logic [31:0] imm_I_reg;
+    logic [31:0] imm_S_reg;
+    logic [31:0] imm_B_reg;
+    logic [31:0] imm_U_reg;
+    logic [31:0] imm_J_reg;
+    logic [31:0] reg_data1_reg;
+    logic [31:0] reg_data2_reg;
+    logic signed [31:0] s_rs1_data_reg;
+    logic signed [31:0] s_rs2_data_reg;
+    logic [4:0] rs1_data_5bit_reg;
+    logic [4:0] rs2_data_5bit_reg;
 
     // ALU outputs
     logic [31:0] alu_calc;
@@ -103,9 +124,10 @@ module cpu_top #(
     /** #################################
         ######## logic assignment #######
         ################################# */
-    assign bram_mode = (opcode == OP_STORE);
-    assign ecall_sel = (reg_data1 == 32'd1); // based on register x17, determine it's putchar or getchar
+    assign bram_mode = (opcode_reg == OP_STORE);
+    assign ecall_sel = (reg_data1_reg == 32'd1); // based on register x17, determine it's putchar or getchar
     assign s_imm_I = $signed(imm_I);
+    assign s_imm_I_reg = $signed(imm_I_reg);
 
     /** #################################
         #### submodule instantiation ####
@@ -113,7 +135,7 @@ module cpu_top #(
     controller u_controller (
         .clk(clk),
         .rst(rst),
-        .instr(instr_fetch),
+        .instr(instr_reg),
         .halt_signal(halt_signal),
         .block_signal(block_signal),
         .ecall_sel(ecall_sel),
@@ -167,23 +189,23 @@ module cpu_top #(
     );
 
     alu u_alu (
-        .opcode(opcode),
-        .rd(rd),
-        .func3(func3),
-        .rs1_data(reg_data1),
-        .rs2_data(reg_data2),
-        .s_rs1_data(s_rs1_data),
-        .s_rs2_data(s_rs2_data),
-        .rs1_data_5bit(rs1_data_5bit),
-        .rs2_data_5bit(rs2_data_5bit),
-        .func7(func7),
+        .opcode(opcode_reg),
+        .rd(rd_reg),
+        .func3(func3_reg),
+        .rs1_data(reg_data1_reg),
+        .rs2_data(reg_data2_reg),
+        .s_rs1_data(s_rs1_data_reg),
+        .s_rs2_data(s_rs2_data_reg),
+        .rs1_data_5bit(rs1_data_5bit_reg),
+        .rs2_data_5bit(rs2_data_5bit_reg),
+        .func7(func7_reg),
 
-        .s_imm_I(s_imm_I),
-        .imm_I(imm_I),
-        .imm_S(imm_S),
-        .imm_B(imm_B),
-        .imm_U(imm_U),
-        .imm_J(imm_J),
+        .s_imm_I(s_imm_I_reg),
+        .imm_I(imm_I_reg),
+        .imm_S(imm_S_reg),
+        .imm_B(imm_B_reg),
+        .imm_U(imm_U_reg),
+        .imm_J(imm_J_reg),
 
         .pc(pc),
 
@@ -217,7 +239,7 @@ module cpu_top #(
 
     bram_formatting u_bram_formatting (
         .mode(bram_mode),
-        .func3(func3),
+        .func3(func3_reg),
         .addr_offset(eff_addr_calc_reg[1:0]),
         .mem_in(mem1_data),
         .reg_in(store_data_reg),
@@ -236,7 +258,7 @@ module cpu_top #(
         .rx_pop(rx_pop),
         .reg10_out(syscall_out),
 
-        .reg10_in(reg_data2),
+        .reg10_in(reg_data2_reg),
         .tx_full(tx_full),
         .tx_data(tx_data),
         .tx_push(tx_push),
@@ -246,8 +268,8 @@ module cpu_top #(
     );
 
     writeback_mux u_writeback_mux (
-        .opcode(opcode),
-        .rd(rd),
+        .opcode(opcode_reg),
+        .rd(rd_reg),
         .alu_calc_reg(alu_calc_reg),
         .mem_out(formatted_mem_out),
         .ecall_en(ecall_en),
@@ -266,16 +288,53 @@ module cpu_top #(
             eff_addr_calc_reg <= '0;
             pc_calc_reg       <= '0;
             store_data_reg    <= '0;
+            opcode_reg        <= '0;
+            rd_reg            <= '0;
+            func3_reg         <= '0;
+            rs1_reg           <= '0;
+            rs2_reg           <= '0;
+            func7_reg         <= '0;
+            imm_I_reg         <= '0;
+            imm_S_reg         <= '0;
+            imm_B_reg         <= '0;
+            imm_U_reg         <= '0;
+            imm_J_reg         <= '0;
+            reg_data1_reg     <= '0;
+            reg_data2_reg     <= '0;
+            s_rs1_data_reg    <= '0;
+            s_rs2_data_reg    <= '0;
+            rs1_data_5bit_reg <= '0;
+            rs2_data_5bit_reg <= '0;
         end
 
         else begin
             // note: instr_fetch and mem1_data both retrieve from bram at the clock edge, so the new data is only available at the next cycle
+            if (state == IR) instr_reg <= instr_fetch;
             if (state == EXECUTE) begin
                 alu_calc_reg      <= alu_calc;
                 eff_addr_calc_reg <= eff_addr_calc;
                 pc_calc_reg       <= pc_calc;
             end
-            if (state == DECODE) store_data_reg <= reg_data2;
+            if (state == DECODE) begin
+                store_data_reg    <= reg_data2;
+                opcode_reg        <= opcode;
+                rd_reg            <= rd;
+                func3_reg         <= func3;
+                rs1_reg           <= rs1;
+                rs2_reg           <= rs2;
+                func7_reg         <= func7;
+                imm_I_reg         <= imm_I;
+                imm_S_reg         <= imm_S;
+                imm_B_reg         <= imm_B;
+                imm_U_reg         <= imm_U;
+                imm_J_reg         <= imm_J;
+                reg_data1_reg     <= reg_data1;
+                reg_data2_reg     <= reg_data2;
+                s_rs1_data_reg    <= s_rs1_data;
+                s_rs2_data_reg    <= s_rs2_data;
+                rs1_data_5bit_reg <= rs1_data_5bit;
+                rs2_data_5bit_reg <= rs2_data_5bit;
+            end
         end 
     end
 

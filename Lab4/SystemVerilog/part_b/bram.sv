@@ -1,7 +1,7 @@
 import cpu_pkg::*;
 
 module bram #(
-    parameter INIT_FILE = "mems/test0.mem"
+    parameter INIT_FILE = "mems/test3.mem"
 )(
     input  logic rst,
     input  logic clk,

@@ -5,6 +5,7 @@ package cpu_pkg;
 
     typedef enum logic [2:0]{
       FETCH,
+      IR,  // Istore fetched instruction into nstruction Register
       DECODE,
       EXECUTE,
       MEM1,

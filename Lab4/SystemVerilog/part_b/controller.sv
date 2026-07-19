@@ -66,7 +66,8 @@ module controller(
       else begin
         next_state = state;
         case (state)
-          FETCH: next_state = DECODE;
+          FETCH: next_state = IR;
+          IR: next_state = DECODE;
           DECODE: begin 
             next_state = EXECUTE;
           end
