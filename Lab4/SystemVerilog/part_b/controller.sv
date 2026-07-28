@@ -30,10 +30,10 @@ module controller(
   output logic [31:0]   imm_S,
   output logic [31:0]   imm_B,
   output logic [31:0]   imm_U,
-  output logic [31:0]   imm_J
+  output logic [31:0]   imm_J,
 
   // control logics 
-  output alu_op_t [4:0] alu_op_sel,    // ALU operation selection
+  output alu_op_t       alu_op_sel,    // ALU operation selection
   output logic          pc_en,         // update pc register enable line
   output logic          reg_wen,       // register write enable line
   output logic          mem1_ren,      // retrieve from main memory enable lie

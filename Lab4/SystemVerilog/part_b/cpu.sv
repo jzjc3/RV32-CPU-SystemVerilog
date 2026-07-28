@@ -1,7 +1,5 @@
 // instr_reg
-// alu_calc_reg
-// eff_addr_calc_reg
-// pc_calc_reg
+// alu_out_reg
 // mem_data_reg
 // store_data_reg
 
@@ -47,8 +45,6 @@ module cpu #(
 
     // PC
     logic [MEM_ADDR_BIT-1:0] pc;
-    logic [MEM_ADDR_BIT-1:0] pc_calc;
-    logic [MEM_ADDR_BIT-1:0] pc_calc_reg;
 
     // Instruction
     logic [31:0] instr_fetch;       // fetched instruction
@@ -69,37 +65,33 @@ module cpu #(
     logic [31:0] reg_data1;
     logic [31:0] reg_data2;
 
-    logic signed [31:0] s_rs1_data;
-    logic signed [31:0] s_rs2_data;
-    logic signed [31:0] s_imm_I_reg;
-    logic [4:0] rs1_data_5bit;
-    logic [4:0] rs2_data_5bit;
-
     // Decode pipeline registers
     logic [6:0]  opcode_reg;
     logic [4:0]  rd_reg;
     logic [2:0]  func3_reg;
+    logic [6:0]  func7_reg;
     logic [4:0]  rs1_reg;
     logic [4:0]  rs2_reg;
-    logic [6:0]  func7_reg;
+
     logic [31:0] imm_I_reg;
     logic [31:0] imm_S_reg;
     logic [31:0] imm_B_reg;
     logic [31:0] imm_U_reg;
     logic [31:0] imm_J_reg;
+
     logic [31:0] reg_data1_reg;
     logic [31:0] reg_data2_reg;
-    logic signed [31:0] s_rs1_data_reg;
-    logic signed [31:0] s_rs2_data_reg;
-    logic [4:0] rs1_data_5bit_reg;
-    logic [4:0] rs2_data_5bit_reg;
 
-    // ALU outputs
-    logic [31:0] alu_calc;
-    logic [31:0] alu_calc_reg;
-
-    logic [MEM_ADDR_BIT-1:0] eff_addr_calc;
-    logic [MEM_ADDR_BIT-1:0] eff_addr_calc_reg;
+    // ALU 
+    // *** decode stage ***
+    alu_op_t     alu_op_sel;
+    alu_op_t     alu_op_sel_reg;
+    // *** alu input data selection mux ***
+    logic [31:0] alu_src_a;
+    logic [31:0] alu_src_b;
+    // *** ALU ***
+    logic [31:0] alu_out;
+    logic [31:0] alu_out_reg;
 
     // BRAM
     logic [31:0] mem1_data;
@@ -126,8 +118,6 @@ module cpu #(
         ################################# */
     assign bram_mode = (opcode_reg == OP_STORE);
     assign ecall_sel = (reg_data1_reg == 32'd1); // based on register x17, determine it's putchar or getchar
-    assign s_imm_I = $signed(imm_I);
-    assign s_imm_I_reg = $signed(imm_I_reg);
 
     /** #################################
         #### submodule instantiation ####
@@ -155,6 +145,8 @@ module cpu #(
         .imm_U(imm_U),
         .imm_J(imm_J),
 
+        .alu_op_sel(alu_op_sel),
+
         .pc_en(pc_en),
         .reg_wen(reg_wen),
         .mem1_ren(mem1_ren),
@@ -176,49 +168,38 @@ module cpu #(
         .reg_data2(reg_data2)
     );
 
-    register_formatting u_rs1_formatting (
-        .reg_data(reg_data1),
-        .signed_reg_data(s_rs1_data),
-        .reg_data_5bit(rs1_data_5bit)
-    );
+    alu_data_src_mux u_alu_data_src_mux (
+    .opcode(opcode_reg),
+    .func3(func3_reg),
+    .imm_I(imm_I_reg),
+    .imm_S(imm_S_reg),
+    .imm_U(imm_U_reg),
+    .rs1_data(reg_data1_reg),
+    .rs2_data(reg_data2_reg),
+    .pc(pc),
 
-    register_formatting u_rs2_formatting (
-        .reg_data(reg_data2),
-        .signed_reg_data(s_rs2_data),
-        .reg_data_5bit(rs2_data_5bit)
-    );
+    .alu_src_a(alu_src_a),
+    .alu_src_b(alu_src_b)
+);
 
     alu u_alu (
-        .opcode(opcode_reg),
-        .rd(rd_reg),
-        .func3(func3_reg),
-        .rs1_data(reg_data1_reg),
-        .rs2_data(reg_data2_reg),
-        .s_rs1_data(s_rs1_data_reg),
-        .s_rs2_data(s_rs2_data_reg),
-        .rs1_data_5bit(rs1_data_5bit_reg),
-        .rs2_data_5bit(rs2_data_5bit_reg),
-        .func7(func7_reg),
+        .alu_op_sel(alu_op_sel_reg),
+        .alu_src_a(alu_src_a),
+        .alu_src_b(alu_src_b),
 
-        .s_imm_I(s_imm_I_reg),
-        .imm_I(imm_I_reg),
-        .imm_S(imm_S_reg),
-        .imm_B(imm_B_reg),
-        .imm_U(imm_U_reg),
-        .imm_J(imm_J_reg),
-
-        .pc(pc),
-
-        .pc_calc(pc_calc),
-        .alu_calc(alu_calc),
-        .eff_addr_calc(eff_addr_calc)
+        .alu_out(alu_out)
     );
 
     PC u_pc (
         .clk(clk),
         .rst(rst),
         .pc_en(pc_en),
-        .pc_from_alu(pc_calc_reg),
+        .opcode(opcode_reg),
+        .alu_out(alu_out_reg),
+        .imm_I(imm_I_reg),
+        .imm_B(imm_B_reg),
+        .imm_J(imm_J_reg),
+        .rs1_data(reg_data1_reg),
         .pc(pc)
     );
 
@@ -231,7 +212,7 @@ module cpu #(
         .mem2_wen(mem2_wen),
         .mem_fetch_en(mem_fetch_en),
         .pc(pc),
-        .eff_addr(eff_addr_calc_reg),
+        .eff_addr(alu_out_reg[MEM_ADDR_BIT-1:0]),
         .mem2_data_in(formatted_mem_out),
         .mem1_data(mem1_data),
         .instr_fetch(instr_fetch)
@@ -240,7 +221,7 @@ module cpu #(
     bram_formatting u_bram_formatting (
         .mode(bram_mode),
         .func3(func3_reg),
-        .addr_offset(eff_addr_calc_reg[1:0]),
+        .addr_offset(alu_out_reg[1:0]),
         .mem_in(mem1_data),
         .reg_in(store_data_reg),
         .formatted_mem_out(formatted_mem_out)
@@ -270,7 +251,7 @@ module cpu #(
     writeback_mux u_writeback_mux (
         .opcode(opcode_reg),
         .rd(rd_reg),
-        .alu_calc_reg(alu_calc_reg),
+        .alu_out_reg(alu_out_reg),
         .mem_out(formatted_mem_out),
         .ecall_en(ecall_en),
         .ecall_sel(ecall_sel),
@@ -284,16 +265,15 @@ module cpu #(
     // intermediate flip flops for latches over states
     always_ff @(posedge clk) begin
         if (rst) begin
-            alu_calc_reg      <= '0;
-            eff_addr_calc_reg <= '0;
-            pc_calc_reg       <= '0;
+            alu_op_sel_reg    <= '0;
+            alu_out_reg       <= '0;
             store_data_reg    <= '0;
             opcode_reg        <= '0;
             rd_reg            <= '0;
             func3_reg         <= '0;
+            func7_reg         <= '0;
             rs1_reg           <= '0;
             rs2_reg           <= '0;
-            func7_reg         <= '0;
             imm_I_reg         <= '0;
             imm_S_reg         <= '0;
             imm_B_reg         <= '0;
@@ -301,28 +281,21 @@ module cpu #(
             imm_J_reg         <= '0;
             reg_data1_reg     <= '0;
             reg_data2_reg     <= '0;
-            s_rs1_data_reg    <= '0;
-            s_rs2_data_reg    <= '0;
-            rs1_data_5bit_reg <= '0;
-            rs2_data_5bit_reg <= '0;
         end
 
         else begin
             // note: instr_fetch and mem1_data both retrieve from bram at the clock edge, so the new data is only available at the next cycle
-            if (state == IR) instr_reg <= instr_fetch;
-            if (state == EXECUTE) begin
-                alu_calc_reg      <= alu_calc;
-                eff_addr_calc_reg <= eff_addr_calc;
-                pc_calc_reg       <= pc_calc;
-            end
+            if (state == IR)      instr_reg   <= instr_fetch;
+            if (state == EXECUTE) alu_out_reg <= alu_out;
             if (state == DECODE) begin
+                alu_op_sel_reg    <= alu_op_sel;
                 store_data_reg    <= reg_data2;
                 opcode_reg        <= opcode;
                 rd_reg            <= rd;
                 func3_reg         <= func3;
+                func7_reg         <= func7;
                 rs1_reg           <= rs1;
                 rs2_reg           <= rs2;
-                func7_reg         <= func7;
                 imm_I_reg         <= imm_I;
                 imm_S_reg         <= imm_S;
                 imm_B_reg         <= imm_B;
@@ -330,10 +303,6 @@ module cpu #(
                 imm_J_reg         <= imm_J;
                 reg_data1_reg     <= reg_data1;
                 reg_data2_reg     <= reg_data2;
-                s_rs1_data_reg    <= s_rs1_data;
-                s_rs2_data_reg    <= s_rs2_data;
-                rs1_data_5bit_reg <= rs1_data_5bit;
-                rs2_data_5bit_reg <= rs2_data_5bit;
             end
         end 
     end

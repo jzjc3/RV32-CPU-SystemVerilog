@@ -6,11 +6,11 @@ import cpu_pkg::*;
 
 module alu(
     // all inputs are from decoder/controller. some are formatted
-    input  logic [4:0]  alu_op_sel,    // selected operation
+    input  alu_op_t     alu_op_sel,    // selected operation
     input  logic [31:0] alu_src_a,     // alu calculation data source A
     input  logic [31:0] alu_src_b,     // alu calculation data source B
 
-    output logic [31:0] alu_out,
+    output logic [31:0] alu_out
 );
     always_comb begin : alu_operation_AND_mux // do operaion and select output based on alu_op_sel line
         case (alu_op_sel)

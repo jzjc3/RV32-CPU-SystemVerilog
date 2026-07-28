@@ -10,7 +10,8 @@ module PC (
     input  logic        clk,
     input  logic        rst,
     input  logic        pc_en,          // if the PC module/device should be activicated
-    input  logic        alu_out,        // for BRANCH: T/F signal for go to branch or no
+    input  logic [6:0]  opcode,
+    input  logic [31:0] alu_out,        // for BRANCH: T/F signal for go to branch or no
     input  logic [31:0] imm_B,          // branching address depends on value of imm_B
     input  logic [31:0] imm_J,
     input  logic [31:0] imm_I,
@@ -23,8 +24,8 @@ module PC (
     always_comb begin: next_pc_calculation
         case (opcode)
             OP_JAL:    next_pc = pc + imm_J;
-            OP_JALR:   next_pc = (rs1_data + imm_I) & ~1'b1;
-            OP_BRANCH: next_pc = alu_out ? pc + imm_B : pc + 32'd4;
+            OP_JALR:   next_pc = (rs1_data + imm_I) & ~32'd1;
+            OP_BRANCH: next_pc = (alu_out == 32'b0) ? pc + 32'd4 :  pc + imm_B;
             default:   next_pc = pc + 32'd4;
         endcase
     end

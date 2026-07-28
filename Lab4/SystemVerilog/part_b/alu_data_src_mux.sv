@@ -1,13 +1,15 @@
-module alu(
+import cpu_pkg::*;
+
+module alu_data_src_mux(
     // all inputs are from decoder/controller. some are formatted
     input  logic [6:0]  opcode,
+
+    input  logic [2:0]  func3,
 
     // Immediates: all immediates below are alr normalized to 32 bits (sign-extended)
     input  logic [31:0] imm_I, // 12
     input  logic [31:0] imm_S, // 12
-    input  logic [31:0] imm_B, // 13   // last bit is always 0 b/c alignment
     input  logic [31:0] imm_U, // 32   // upper 20 bits
-    input  logic [31:0] imm_J, // 21   // last bit is always 0 b/c alignment
 
     // Register data
     input  logic [31:0] rs1_data,
@@ -33,7 +35,7 @@ module alu(
             OP_LUI:  alu_src_a = 32'b0;
 
             default: alu_src_a = rs1_data;
-        edncase 
+        endcase
     end
     
     // for alu source B, can be from rs2_data, immediates, or constants

@@ -3,7 +3,7 @@ import cpu_pkg::*;
 module writeback_mux (
     input  logic [6:0]  opcode,
     input  logic [4:0]  rd,
-    input  logic [31:0] alu_calc_reg,
+    input  logic [31:0] alu_out_reg,
     input  logic [31:0] mem_out,
     input  logic        ecall_en,
     input  logic        ecall_sel,      // 0: putchar, 1: getchar
@@ -26,7 +26,7 @@ module writeback_mux (
             OP_AUIPC,
             OP_JAL,
             OP_JALR: begin
-                normal_writeback_data = alu_calc_reg;
+                normal_writeback_data = alu_out_reg;
             end
 
             OP_LOAD: begin
