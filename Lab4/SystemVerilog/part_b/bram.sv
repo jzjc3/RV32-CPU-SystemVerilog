@@ -11,6 +11,7 @@ module bram #(
     input  logic [MEM_ADDR_BIT-1:0] pc,
     // note: if the instruction is STORE, for both mem1 and mem2 stage the address into BRAM will be eff_addr
     input  logic [MEM_ADDR_BIT-1:0] eff_addr, // we are only using [MEM_ADDR_BIT-1:2] of eff_addr b/c we want to extract the entire 32 bits
+                                              // effective address is the output of alu
     input  logic [31:0] mem2_data_in, // data to be stored into BRAM at mem2 stage. from bram_formatting.sv
     output logic [31:0] mem1_data, // data output from bram at mem1 stage
     output logic [31:0] instr_fetch  // instruction output from bram at fetch stage
