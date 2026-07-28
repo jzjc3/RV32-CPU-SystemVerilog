@@ -80,6 +80,11 @@ module alu(
     logic [31:0] I_jalr_writeback_result;
     logic [MEM_ADDR_BIT-1:0] I_jalr_next_pc;
 
+    // case(alu_op)
+    //     AND: alu_res = rs1_data & rs2_data; 
+    //     OR:  alu_res = rs1_data | rs2_data; TODO
+    //     AND: alu_res = rs1_data & rs2_data; 
+    //     AND: alu_res = rs1_data & rs2_data; 
 
     /**************************
      **************************

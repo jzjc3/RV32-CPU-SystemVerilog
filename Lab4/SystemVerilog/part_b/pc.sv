@@ -18,14 +18,14 @@ module PC (
     always_ff @(posedge clk) begin
         if (rst) begin
             pc <= '0;
-        end
-
+        end 
+        
         else if (pc_en) begin
             pc <= pc_from_alu; 
         end
     end 
 
-    // output generation
+    // output generation TODO
     always_comb begin
         // output is just the pc value, so no need for a separate comb logic for output computation
     end

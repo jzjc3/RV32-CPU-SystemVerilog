@@ -1,7 +1,7 @@
 import cpu_pkg::*;
 
 module bram #(
-    parameter INIT_FILE = "mems/test3.mem"
+    parameter INIT_FILE = "mems/test0.mem"
 )(
     input  logic rst,
     input  logic clk,
@@ -29,7 +29,7 @@ module bram #(
     end
     
     always_ff @(posedge clk) begin
-        if (rst) begin
+        if (rst) begin // TODO clear mem not these
             mem1_data <= '0;
             instr_fetch <= '0;
         end

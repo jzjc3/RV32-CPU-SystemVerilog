@@ -17,7 +17,7 @@ module cpu #(
     // this path against Vivado's RUN directory, not the source tree -- read the synth
     // log to confirm it was picked up; if not, use an absolute path. (A path Vivado
     // can't find loads memory as all-zero, so the CPU just runs nothing.)
-    parameter INIT_FILE = "mems/test3.mem"
+    parameter INIT_FILE = "mems/test0.mem"
 )(
     input  logic       clk,
     input  logic       rst,
@@ -36,8 +36,8 @@ module cpu #(
     state_t state;
 
     logic pc_en;
-    logic mem_fetch_en;
-    logic mem1_ren;
+    logic mem_fetch_en; // memory read instr enable
+    logic mem1_ren;     // ...
     logic mem2_wen;
     logic reg_wen;
     logic ecall_en;

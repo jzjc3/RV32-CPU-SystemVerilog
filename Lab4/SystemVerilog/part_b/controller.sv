@@ -64,7 +64,7 @@ module controller(
       if (halt_signal) next_state = HALT;
       else if (block_signal) next_state = state;
       else begin
-        next_state = state;
+        next_state = state; //TODO this line does nothing
         case (state)
           FETCH: next_state = IR;
           IR: next_state = DECODE;
