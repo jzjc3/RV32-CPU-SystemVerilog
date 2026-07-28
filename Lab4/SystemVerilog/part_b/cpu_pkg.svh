@@ -27,7 +27,7 @@ package cpu_pkg;
         OP_SYSTEM   = 7'b1110011  // System
     } opcode_t;
 
-    typedef enum logic [3:0] {
+    typedef enum logic [4:0] {
         ALU_ADD,
         ALU_SUB,
         ALU_MUL,
@@ -38,7 +38,14 @@ package cpu_pkg;
         ALU_SLTU,
         ALU_XOR,
         ALU_OR,
-        ALU_AND
+        ALU_AND,
+
+        ALU_BEQ,
+        ALU_BNE,
+        ALU_BLT,
+        ALU_BGE,
+        ALU_BLTU,
+        ALU_BGEU
     } alu_op_t;
 endpackage
 

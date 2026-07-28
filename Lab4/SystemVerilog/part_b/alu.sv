@@ -6,7 +6,7 @@ import cpu_pkg::*;
 
 module alu(
     // all inputs are from decoder/controller. some are formatted
-    input  logic [3:0]  alu_op_sel,    // selected operation
+    input  logic [4:0]  alu_op_sel,    // selected operation
     input  logic [31:0] alu_src_a,     // alu calculation data source A
     input  logic [31:0] alu_src_b,     // alu calculation data source B
 
@@ -14,6 +14,7 @@ module alu(
 );
     always_comb begin : alu_operation_AND_mux // do operaion and select output based on alu_op_sel line
         case (alu_op_sel)
+            // normal arithmetic operation
             ALU_ADD:  alu_result = alu_src_a + alu_src_b;
             ALU_SUB:  alu_result = alu_src_a - alu_src_b;
             ALU_MUL:  alu_result = alu_src_a * alu_src_b;
@@ -25,6 +26,15 @@ module alu(
             ALU_XOR:  alu_result = alu_src_a ^ alu_src_b;
             ALU_OR:   alu_result = alu_src_a | alu_src_b;
             ALU_AND:  alu_result = alu_src_a & alu_src_b;
+            
+            // comparison for OP_BRANCH (for pc, signal line for choosing do default +4 update for do branching/jumping)
+            ALU_BEQ:  alu_calc = (alu_src_a == alu_src_b) ? 32'd1 : 32'd0;
+            ALU_BNE:  alu_calc = (alu_src_a != alu_src_b) ? 32'd1 : 32'd0;
+            ALU_BLT:  alu_calc = ($signed(alu_src_a) <  $signed(alu_src_b)) ? 32'd1 : 32'd0;
+            ALU_BGE:  alu_calc = ($signed(alu_src_a) >= $signed(alu_src_b)) ? 32'd1 : 32'd0;
+            ALU_BLTU: alu_calc = (alu_src_a <  alu_src_b) ? 32'd1 : 32'd0;
+            ALU_BGEU: alu_calc = (alu_src_a >= alu_src_b) ? 32'd1 : 32'd0;
+            
             default:  alu_result = 32'd0;
         endcase
     end

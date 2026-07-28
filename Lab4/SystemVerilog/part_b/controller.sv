@@ -9,38 +9,38 @@ import cpu_pkg::*;
 
 // ecall block_signal, ebreak halt_signal as inputs
 module controller(
-  input  logic         clk,
-  input  logic         rst,
-  input  logic [31:0]  instr,         // from bram.sv 
-  input  logic         halt_signal,   // from system_call.sv
-  input  logic         block_signal,  // from system_call.sv
-  input  logic         ecall_sel,
+  input  logic          clk,
+  input  logic          rst,
+  input  logic [31:0]   instr,         // from bram.sv 
+  input  logic          halt_signal,   // from system_call.sv
+  input  logic          block_signal,  // from system_call.sv
+  input  logic          ecall_sel,
 
-  output state_t       state,
+  output state_t        state,
 
   // fields parsed from instruction
-  output logic [6:0]  opcode,
-  output logic [4:0]  rd,
-  output logic [2:0]  func3,
-  output logic [4:0]  rs1,
-  output logic [4:0]  rs2,
-  output logic [6:0]  func7,
+  output logic [6:0]    opcode,
+  output logic [4:0]    rd,
+  output logic [2:0]    func3,
+  output logic [4:0]    rs1,
+  output logic [4:0]    rs2,
+  output logic [6:0]    func7,
 
-  output logic [31:0] imm_I,
-  output logic [31:0] imm_S,
-  output logic [31:0] imm_B,
-  output logic [31:0] imm_U,
-  output logic [31:0] imm_J
+  output logic [31:0]   imm_I,
+  output logic [31:0]   imm_S,
+  output logic [31:0]   imm_B,
+  output logic [31:0]   imm_U,
+  output logic [31:0]   imm_J
 
   // control logics 
-  output alu_op_t      alu_op_sel,    // ALU operation selection
-  output logic         pc_en,         // update pc register enable line
-  output logic         reg_wen,       // register write enable line
-  output logic         mem1_ren,      // retrieve from main memory enable lie
-  output logic         mem2_wen,      // write to main memory enable line
-  output logic         fetch_en,      // fetch instruction from main memory enable
-  output logic         ecall_en,      // I/O from peripheral enable line
-  output logic         ebreak_en      // system ebreak enable line
+  output alu_op_t [4:0] alu_op_sel,    // ALU operation selection
+  output logic          pc_en,         // update pc register enable line
+  output logic          reg_wen,       // register write enable line
+  output logic          mem1_ren,      // retrieve from main memory enable lie
+  output logic          mem2_wen,      // write to main memory enable line
+  output logic          fetch_en,      // fetch instruction from main memory enable
+  output logic          ecall_en,      // I/O from peripheral enable line
+  output logic          ebreak_en      // system ebreak enable line
 );
 
   state_t next_state;
@@ -48,6 +48,7 @@ module controller(
   // note: opcode decides instruction type
   //       func3 decides operation family
   //       func7 decides special variants
+
   always_comb begin : decode_stage
       opcode = instr[6:0];
       rd     = instr[11:7];
@@ -65,36 +66,58 @@ module controller(
       imm_J = {{11{instr[31]}}, instr[31], instr[19:12], instr[20], instr[30:21], 1'b0};
   end
 
-  always_comb begin : ALU_operatio_selection
-    case (func3)
-        3'b000: begin
-          if (opcode == OP_REGISTER)
-              case (func7) 
-                7'b0000000: alu_op_sel = ALU_ADD;
-                7'b0100000: alu_op_sel = ALU_SUB;
-                7'b0000001: alu_op_sel = ALU_MUL;
-                default:    alu_op_sel = ALU_ADD;
-              endcase 
-          else alu_op_sel = ALU_ADD;
+  // OP_BRANCH itselves is a special case because it does comparison instead of arithmetic operation on the two data fed to alu 
+  always_comb begin : ALU_operation_selection
+    case (opcode)
+        OP_REGISTER,
+        OP_IMM: begin
+            case (func3)
+                3'b000: begin
+                  if (opcode == OP_REGISTER)
+                      case (func7) 
+                        7'b0000000: alu_op_sel = ALU_ADD;
+                        7'b0100000: alu_op_sel = ALU_SUB;
+                        7'b0000001: alu_op_sel = ALU_MUL;
+                        default:    alu_op_sel = ALU_ADD;
+                      endcase 
+                  else alu_op_sel = ALU_ADD;
+                end
+
+                3'b001: alu_op_sel = ALU_SLL;
+
+                3'b010: alu_op_sel = ALU_SLT;
+
+                3'b011: alu_op_sel = ALU_SLTU;
+
+                3'b100: alu_op_sel = ALU_XOR;
+
+                3'b101: alu_op_sel = (func7 == 7'b0100000) ? ALU_SRA : ALU_SRL;
+
+                3'b110: alu_op_sel = ALU_OR;
+
+                3'b111: alu_op_sel = ALU_AND;
+
+                default: alu_op_sel = ALU_ADD;
+            endcase
         end
 
-        3'b001: alu_op_sel = ALU_SLL;
+        OP_BRANCH: begin
+            case (func3)
+                3'b000: alu_op_sel  = ALU_BEQ;
+                3'b001: alu_op_sel  = ALU_BNE;
+                3'b100: alu_op_sel  = ALU_BLT;
+                3'b101: alu_op_sel  = ALU_BGE;
+                3'b110: alu_op_sel  = ALU_BLTU;
+                3'b111: alu_op_sel  = ALU_BGEU;
+                default: alu_op_sel = ALU_ADD;
+            endcase
+        end
 
-        3'b010: alu_op_sel = ALU_SLT;
-
-        3'b011: alu_op_sel = ALU_SLTU;
-
-        3'b100: alu_op_sel = ALU_XOR;
-
-        3'b101: alu_op_sel = (func7 == 7'b0100000) ? ALU_SRA : ALU_SRL;
-
-        3'b110: alu_op_sel = ALU_OR;
-
-        3'b111: alu_op_sel = ALU_AND;
-
-        default: alu_op_sel = ALU_ADD;
+        default: begin
+            alu_op_sel = ALU_ADD;
+        end
     endcase
-  end
+  end 
 
   always_comb begin : FSM
       if (halt_signal) next_state = HALT;
