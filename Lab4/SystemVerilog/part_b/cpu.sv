@@ -19,31 +19,31 @@ module cpu #(
     // can't find loads memory as all-zero, so the CPU just runs nothing.)
     parameter INIT_FILE = "mems/test0.mem"
 )(
-    input  logic       clk,
-    input  logic       rst,
-    input  logic       rx_empty,
-    input  logic [7:0] rx_data,
-    output logic       rx_pop,
-    input  logic       tx_full,
-    output logic [7:0] tx_data,
-    output logic       tx_push
+    input  logic       clk,         // system clock
+    input  logic       rst,         // reset button (btn 0 on Boolean Board)     
+    input  logic       rx_empty,    // peripheral I/O fifo empty or not
+    input  logic [7:0] rx_data,     // next peripheral I/O read data
+    output logic       rx_pop,      // trigger line for reading from peripheral I/O
+    input  logic       tx_full,     // peripheral I/O fifo full or not
+    output logic [7:0] tx_data,     // data to be written to peripheral I/O fifo
+    output logic       tx_push      // trigger line for writing to peripheral I/O
 );  
     /** ###########################
         #### logic declaration ####
         ########################### */
 
     // FSM / Controller
-    state_t state;
+    state_t state;                  // FSM state 
 
-    logic pc_en;
-    logic mem_fetch_en; // memory read instr enable
-    logic mem1_ren;     // ...
-    logic mem2_wen;
-    logic reg_wen;
-    logic ecall_en;
-    logic ebreak_en;
-    logic block_signal;
-    logic halt_signal;
+    logic pc_en;                    // update PC register enable ctrl line
+    logic mem_fetch_en;             // memory read instr enable ctrl lin
+    logic mem1_ren;                 // read main RAM enable ctrl line
+    logic mem2_wen;                 // write to main RAM enable ctrl line
+    logic reg_wen;                  // write register enable ctrl line
+    logic ecall_en;                 // peripheral I/O enable line
+    logic ebreak_en;                // ebreak system call enable line
+    logic block_signal;             // blocking instruction signal fed back to cpu from system (invalid read or write to I/O peripheral)
+    logic halt_signal;              // halting cpu signal
 
     // PC
     logic [MEM_ADDR_BIT-1:0] pc;
@@ -51,8 +51,8 @@ module cpu #(
     logic [MEM_ADDR_BIT-1:0] pc_calc_reg;
 
     // Instruction
-    logic [31:0] instr_fetch;
-    logic [31:0] instr_reg;
+    logic [31:0] instr_fetch;       // fetched instruction
+    logic [31:0] instr_reg;         // register that stores fetched instruction
 
     // Decode
     logic [6:0] opcode;
@@ -76,12 +76,12 @@ module cpu #(
     logic [4:0] rs2_data_5bit;
 
     // Decode pipeline registers
-    logic [6:0] opcode_reg;
-    logic [4:0] rd_reg;
-    logic [2:0] func3_reg;
-    logic [4:0] rs1_reg;
-    logic [4:0] rs2_reg;
-    logic [6:0] func7_reg;
+    logic [6:0]  opcode_reg;
+    logic [4:0]  rd_reg;
+    logic [2:0]  func3_reg;
+    logic [4:0]  rs1_reg;
+    logic [4:0]  rs2_reg;
+    logic [6:0]  func7_reg;
     logic [31:0] imm_I_reg;
     logic [31:0] imm_S_reg;
     logic [31:0] imm_B_reg;

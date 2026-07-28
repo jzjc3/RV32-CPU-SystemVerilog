@@ -26,5 +26,19 @@ package cpu_pkg;
         OP_JALR     = 7'b1100111, // I-type
         OP_SYSTEM   = 7'b1110011  // System
     } opcode_t;
+
+    typedef enum logic [3:0] {
+        ALU_ADD,
+        ALU_SUB,
+        ALU_MUL,
+        ALU_SLL,
+        ALU_SRA,
+        ALU_SRL,
+        ALU_SLT,
+        ALU_SLTU,
+        ALU_XOR,
+        ALU_OR,
+        ALU_AND
+    } alu_op_t;
 endpackage
 
