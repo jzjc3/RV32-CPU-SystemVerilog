@@ -841,7 +841,7 @@ index a55c8d9..d319b4e 100644
 +        final_reg_w_addr = rd;
          final_reg_wdata = normal_writeback_data;
  
-         if (ecall_en && ecall_sel && !block_signal) begin
+         if (ecall_en && ecall_sel && ~block_signal) begin
 -            final_reg_w_ind = 5'd10;       // a0
 +            final_reg_w_addr = 5'd10;       // a0
              final_reg_wdata = syscall_out; // getchar result

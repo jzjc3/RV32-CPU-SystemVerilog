@@ -38,8 +38,8 @@ module i2c_target (
     always_comb begin : scl_edge_detector
         scl_rising = 0;
         scl_falling = 0;
-        if(scl_prev == 1'b0 && scl == 1'b1) scl_rising = 1;
-        else if(scl_prev == 1'b1 && scl == 1'b0) scl_falling = 1;
+        if(scl_prev == 1'b0 & scl == 1'b1) scl_rising = 1;
+        else if(scl_prev == 1'b1 & scl == 1'b0) scl_falling = 1;
     end
 
     always_ff @( posedge clk ) begin : scl_follower
@@ -49,8 +49,8 @@ module i2c_target (
     always_comb begin : sda_edge_detector
         sda_rising = 0;
         sda_falling = 0;
-        if(sda_prev == 1'b0 && sda == 1'b1) sda_rising = 1;
-        else if(sda_prev == 1'b1 && sda == 1'b0) sda_falling = 1;
+        if(sda_prev == 1'b0 & sda == 1'b1) sda_rising = 1;
+        else if(sda_prev == 1'b1 & sda == 1'b0) sda_falling = 1;
     end
 
     always_ff @( posedge clk ) begin : sda_follower

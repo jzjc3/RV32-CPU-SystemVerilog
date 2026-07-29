@@ -1,8 +1,10 @@
 import cpu_pkg::*;
 
-// brief: 1) alu calculation output -> rd register
-//        2) pc calculation -> pc register
-//        3) ea: effective address for main RAM access calculation -> main memory
+/**alu.sv
+ * brief: 1) alu calculation output -> rd register
+ *        2) pc calculation -> pc register
+ *        3) ea: effective address for main RAM access calculation -> main memory
+*/
 
 module alu(
     // all inputs are from decoder/controller. some are formatted

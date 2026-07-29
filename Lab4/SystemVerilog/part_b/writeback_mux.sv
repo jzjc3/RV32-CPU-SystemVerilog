@@ -19,9 +19,8 @@ module writeback_mux (
 
     logic [31:0] normal_writeback_data;
 
+    // choose writeback data is calculated by alu or retrieved from main RAM
     always_comb begin
-        normal_writeback_data = 32'b0;
-
         case (opcode)
             OP_REGISTER,
             OP_IMM,
@@ -42,13 +41,14 @@ module writeback_mux (
         endcase
     end
 
+    // 2 cases: system call or not (system call always write to a0, and writeback data from peripheral I/O)
     always_comb begin
         final_reg_w_addr = rd;
         final_reg_wdata = normal_writeback_data;
 
-        if (ecall_en && ecall_sel && !block_signal) begin
-            final_reg_w_addr = 5'd10;       // a0
-            final_reg_wdata = syscall_out; // getchar result
+        if (ecall_en & ecall_sel & ~block_signal) begin
+            final_reg_w_addr = 5'd10;      // a0
+            final_reg_wdata  = syscall_out; // getchar result
         end
     end
 

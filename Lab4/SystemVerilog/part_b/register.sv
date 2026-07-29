@@ -14,7 +14,7 @@ module register(
     output logic [31:0] reg_data2       // second read data
 ); 
 
-    logic [31:0] regs [31:0];
+    logic [31:0] regs [31:1];           // regs[0] will never be used, saving one logic
 
     // read from register is combinational
     assign reg_data1 = (reg_r_addr1 == 5'd0) ? 32'd0 : regs[reg_r_addr1];
@@ -23,10 +23,10 @@ module register(
     // write to register is sequential
     always_ff @(posedge clk) begin
         if (rst)
-            for (int i = 0; i < 32; i++) regs[i] <= '0;
+            for (int i = 1; i < 32; i++) regs[i] <= '0;
 
-        else if (reg_wen)
-            regs[reg_w_addr] <= (reg_w_addr == 5'd0) ? 32'd0 : reg_wdata;
+        else if (reg_wen & (reg_w_addr != 5'd0))
+            regs[reg_w_addr] <= reg_wdata;
     end
 
 endmodule

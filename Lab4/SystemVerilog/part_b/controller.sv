@@ -46,22 +46,20 @@ module controller(
   //       func3 decides operation family
   //       func7 decides special variants
 
-  always_comb begin : decode_stage
-      opcode = instr[6:0];
-      rd     = instr[11:7];
-      func3  = instr[14:12];
-      rs1    = (opcode == OP_SYSTEM) ? 5'd17 : instr[19:15];
-      rs2    = (opcode == OP_SYSTEM) ? 5'd10 : instr[24:20];
-      func7  = instr[31:25];
-  end 
+  // *** decode_stage ***
+  assign opcode = instr[6:0];
+  assign rd     = instr[11:7];
+  assign func3  = instr[14:12];
+  assign rs1    = (opcode == OP_SYSTEM) ? 5'd17 : instr[19:15];
+  assign rs2    = (opcode == OP_SYSTEM) ? 5'd10 : instr[24:20];
+  assign func7  = instr[31:25];
 
-  always_comb begin: immediate_formatting
-      imm_I = {{20{instr[31]}}, instr[31:20]};
-      imm_S = {{20{instr[31]}}, instr[31:25], instr[11:7]};
-      imm_B = {{19{instr[31]}}, instr[31], instr[7], instr[30:25], instr[11:8], 1'b0};
-      imm_U = {instr[31:12], 12'b0};
-      imm_J = {{11{instr[31]}}, instr[31], instr[19:12], instr[20], instr[30:21], 1'b0};
-  end
+  // *** immediate_formatting ***
+  assign imm_I = {{20{instr[31]}}, instr[31:20]};
+  assign imm_S = {{20{instr[31]}}, instr[31:25], instr[11:7]};
+  assign imm_B = {{19{instr[31]}}, instr[31], instr[7], instr[30:25], instr[11:8], 1'b0};
+  assign imm_U = {instr[31:12], 12'b0};
+  assign imm_J = {{11{instr[31]}}, instr[31], instr[19:12], instr[20], instr[30:21], 1'b0};
 
   // OP_BRANCH is a special case because it does comparison instead of arithmetic operation on the two data fed to alu
   always_comb begin : ALU_operation_selection
@@ -110,63 +108,54 @@ module controller(
             endcase
         end
 
-        default: begin
-            alu_op_sel = ALU_ADD;
-        end
+        default: alu_op_sel = ALU_ADD;
     endcase
   end 
 
   always_comb begin : FSM
-      if (halt_signal) next_state = HALT;
-      else if (block_signal) next_state = state;
+      if (halt_signal)        next_state = HALT;
+      else if (block_signal)  next_state = state;
       else begin
-        next_state = state; //TODO this line does nothing
         case (state)
-          FETCH: next_state = IR;
-          IR: next_state = DECODE;
-          DECODE: begin 
-            next_state = EXECUTE;
-          end
+          FETCH:      next_state = IR;
+          IR:         next_state = DECODE;
+          DECODE:     next_state = EXECUTE;
           EXECUTE: begin
             case (opcode)
               OP_LOAD, OP_STORE: next_state = MEM1;
               default:           next_state = WRITEBACK;
             endcase
           end
-          MEM1: next_state = MEM2;
-          MEM2: next_state = WRITEBACK;
-          WRITEBACK: next_state = FETCH;
-          HALT: next_state = HALT;
-          default: next_state = HALT;
+          MEM1:       next_state = MEM2;
+          MEM2:       next_state = WRITEBACK;
+          WRITEBACK:  next_state = FETCH;
+          HALT:       next_state = HALT;
+          default:    next_state = HALT;
         endcase
       end
   end
 
   // Sequential logic: latching FSM state
   always_ff @(posedge clk) begin
-    if (rst) begin
-      state <= FETCH;
-    end
-    else begin
-      state <= next_state;
-    end
+    if(rst)   state <= FETCH;
+    else      state <= next_state;
   end
 
   // Output SIGNAL / DEVICE CONTROL AND ACTIVATION SIGNAL generation
-  assign  pc_en     = (state == WRITEBACK) && !block_signal && !halt_signal;
-  assign  reg_wen   = (state == WRITEBACK) &&
+  assign  pc_en     = (state == WRITEBACK) & ~block_signal & ~halt_signal;
+  assign  reg_wen   = (state == WRITEBACK) &
                    (
-                       opcode == OP_REGISTER ||
-                       opcode == OP_IMM      ||
-                       opcode == OP_LOAD     ||
-                       opcode == OP_LUI      ||
-                       opcode == OP_AUIPC    ||
-                       opcode == OP_JAL      ||
-                       opcode == OP_JALR     ||
-                       (ecall_en && ecall_sel && !block_signal)
+                       opcode == OP_REGISTER |
+                       opcode == OP_IMM      |
+                       opcode == OP_LOAD     |
+                       opcode == OP_LUI      |
+                       opcode == OP_AUIPC    |
+                       opcode == OP_JAL      |
+                       opcode == OP_JALR     |
+                       (ecall_en & ecall_sel & ~block_signal)
                    );  // the rest of the states get to WRITEBACK but will only update PC during writeback
-  assign  mem_ren = (state == FETCH) || ((state == MEM1) && ((opcode == OP_LOAD) || (opcode == OP_STORE)));
-  assign  mem_wen = (state == MEM2) && (opcode == OP_STORE);
+  assign  mem_ren = (state == FETCH) | ((state == MEM1) & ((opcode == OP_LOAD) | (opcode == OP_STORE)));
+  assign  mem_wen = (state == MEM2) & (opcode == OP_STORE);
   assign  ecall_en  = (state == WRITEBACK) & (instr == 32'h00000073);
   assign  ebreak_en = (state == WRITEBACK) & (instr == 32'h00100073);
 
