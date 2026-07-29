@@ -4,7 +4,7 @@ import cpu_pkg::*;
   * Synchronous word-addressed BRAM used for instruction fetch and data access.
   */
 module bram #(
-    parameter INIT_FILE = "mems/test0.mem"
+    parameter INIT_FILE = "mems/test9.mem"
 )(
     input  logic rst,                           // synchronous reset for read data output
     input  logic clk,                           // system clock

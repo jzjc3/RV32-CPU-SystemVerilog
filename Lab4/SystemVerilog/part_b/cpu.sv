@@ -16,7 +16,7 @@ module cpu #(
     // this path against Vivado's RUN directory, not the source tree -- read the synth
     // log to confirm it was picked up; if not, use an absolute path. (A path Vivado
     // can't find loads memory as all-zero, so the CPU just runs nothing.)
-    parameter INIT_FILE = "mems/test0.mem"
+    parameter INIT_FILE = "mems/test9.mem"
 )(
     input  logic       clk,         // system clock
     input  logic       rst,         // reset button (btn 0 on Boolean Board)     
@@ -88,6 +88,8 @@ module cpu #(
     // *** alu input data selection mux ***
     logic [31:0] alu_src_a;         // alu source data A
     logic [31:0] alu_src_b;         // alu source data B
+    logic [31:0] alu_src_a_reg;     // intermediate register for alu source data A
+    logic [31:0] alu_src_b_reg;     // intermediate register for alu source data B
     // *** ALU ***
     logic [31:0] alu_out;           // alu computation result
     logic [31:0] alu_out_reg;       // intermediate register for alu output
@@ -119,7 +121,7 @@ module cpu #(
     /** #################################
         #### submodule instantiation ####
         ################################# */
-    controller controller (
+    controller u_controller (
         .clk(clk),
         .rst(rst),
         .instr(instr_reg),
@@ -152,7 +154,7 @@ module cpu #(
         .ebreak_en(ebreak_en)
     );
 
-    register register (
+    register u_register (
         .clk(clk),
         .rst(rst),
         .reg_wen(reg_wen),
@@ -164,24 +166,25 @@ module cpu #(
         .reg_data2(reg_data2)
     );
 
-    alu_data_src_mux alu_data_src_mux (
-        .opcode(opcode_reg),
-        .func3(func3_reg),
-        .imm_I(imm_I_reg),
-        .imm_S(imm_S_reg),
-        .imm_U(imm_U_reg),
-        .rs1_data(reg_data1_reg),
-        .rs2_data(reg_data2_reg),
+    // Done in DECODE stage, so that the ALU can use the correct data in EXECUTE stage
+    alu_data_src_mux u_alu_data_src_mux (
+        .opcode(opcode),
+        .func3(func3),
+        .imm_I(imm_I),
+        .imm_S(imm_S),
+        .imm_U(imm_U),
+        .rs1_data(reg_data1),
+        .rs2_data(reg_data2),
         .pc(pc),
 
         .alu_src_a(alu_src_a),
         .alu_src_b(alu_src_b)
     );
 
-    alu alu (
+    alu u_alu (
         .alu_op_sel(alu_op_sel_reg),
-        .alu_src_a(alu_src_a),
-        .alu_src_b(alu_src_b),
+        .alu_src_a(alu_src_a_reg),
+        .alu_src_b(alu_src_b_reg),
 
         .alu_out(alu_out)
     );
@@ -221,8 +224,6 @@ module cpu #(
     );
 
     system_call u_system_call (
-        .rst(rst),
-        .clk(clk),
         .ecall_en(ecall_en),
         .ebreak_en(ebreak_en),
         .ecall_sel(ecall_sel),
@@ -271,7 +272,9 @@ module cpu #(
             imm_J_reg         <= '0;
             reg_data1_reg     <= '0;
             reg_data2_reg     <= '0;
-            alu_op_sel_reg    <= '0;
+            alu_op_sel_reg    <= ALU_ADD;
+            alu_src_a_reg     <= '0;
+            alu_src_b_reg     <= '0;
             alu_out_reg       <= '0;
         end
 
@@ -295,6 +298,8 @@ module cpu #(
                 reg_data1_reg     <= reg_data1;
                 reg_data2_reg     <= reg_data2;
                 alu_op_sel_reg    <= alu_op_sel;
+                alu_src_a_reg     <= alu_src_a;
+                alu_src_b_reg     <= alu_src_b;
             end
         end 
     end
