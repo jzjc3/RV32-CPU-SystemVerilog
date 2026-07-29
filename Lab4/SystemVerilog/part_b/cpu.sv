@@ -1,12 +1,13 @@
-// instr_reg
-// alu_out_reg
-// mem_data_reg
-// store_data_reg
+// Rule: how to know if a signal need to be latched
+//       1) If a value is produced in one FSM state but used in a later FSM state, latch it.
+//       2) If the producer is synchronous memory/BRAM, expect to latch or wait for its output.
+//       (because we cannot use it right away if it's not latched, cuz it's synchronous access)
 
-// Q: how do we know if a signal need to be latched
-// A: 1) If a value is produced in one FSM state but used in a later FSM state, latch it.
-//    2) If the producer is synchronous memory/BRAM, expect to latch or wait for its output.
-//      (because we cannot use it right away if it's not latched, cuz it's synchronous access)
+/** cpu.sv:
+  * Top CPU module: integrates controller, datapath, BRAM, and system I/O.
+  * Multi-cycle implementation with registered instruction, operands,
+  * ALU result, and control fields between FSM states.s
+  */
 
 import cpu_pkg::*;
 
@@ -34,8 +35,8 @@ module cpu #(
     state_t state;                  // FSM state 
 
     logic pc_en;                    // update PC register enable ctrl line
-    logic mem_ren;                 // read main RAM enable ctrl line
-    logic mem_wen;                 // write to main RAM enable ctrl line
+    logic mem_ren;                  // read main RAM enable ctrl line
+    logic mem_wen;                  // write to main RAM enable ctrl line
     logic reg_wen;                  // write register enable ctrl line
     logic ecall_en;                 // peripheral I/O enable line
     logic ebreak_en;                // ebreak system call enable line
@@ -43,10 +44,10 @@ module cpu #(
     logic halt_signal;              // halting cpu signal
 
     // PC
-    logic [MEM_ADDR_BIT-1:0] pc;
+    logic [MEM_ADDR_BIT-1:0] pc;    // program counter
 
     // Instruction
-    logic [31:0] instr_reg;         // register that stores fetched instruction
+    logic [31:0] instr_reg;         // intermediate register that stores fetched instruction
 
     // Decode
     logic [6:0] opcode;
@@ -57,19 +58,19 @@ module cpu #(
     logic [6:0] func7;
 
     // Immediates
-    logic [31:0]  imm_I, imm_S, imm_B, imm_U, imm_J;
+    logic [31:0]  imm_I, imm_S, imm_B, imm_U, imm_J;    // formatted immediates extracted from instruction
     
     // Register
-    logic [31:0] reg_data1;
-    logic [31:0] reg_data2;
+    logic [31:0] reg_data1;         // data A retrieved from register
+    logic [31:0] reg_data2;         // data B retrieved from register
 
     // Decode pipeline registers
     logic [6:0]  opcode_reg;
     logic [4:0]  rd_reg;
     logic [2:0]  func3_reg;
     logic [6:0]  func7_reg;
-    logic [4:0]  rs1_reg;
-    logic [4:0]  rs2_reg;
+    logic [4:0]  rs1_reg;           // intermediate register A for register access ADDRESS
+    logic [4:0]  rs2_reg;           // intermediate register B for register access ADDRESS
 
     logic [31:0] imm_I_reg;
     logic [31:0] imm_S_reg;
@@ -77,53 +78,48 @@ module cpu #(
     logic [31:0] imm_U_reg;
     logic [31:0] imm_J_reg;
 
-    logic [31:0] reg_data1_reg;
-    logic [31:0] reg_data2_reg;
+    logic [31:0] reg_data1_reg;     // intermediate register A for DATA retrieved from register
+    logic [31:0] reg_data2_reg;     // intermediate register B for DATA retrieved from register
 
     // ALU 
     // *** decode stage ***
-    alu_op_t     alu_op_sel;
-    alu_op_t     alu_op_sel_reg;
+    alu_op_t     alu_op_sel;        // alu operation selection ctrl line
+    alu_op_t     alu_op_sel_reg;    // intermediate register for alu operation selection ctrl bits
     // *** alu input data selection mux ***
-    logic [31:0] alu_src_a;
-    logic [31:0] alu_src_b;
+    logic [31:0] alu_src_a;         // alu source data A
+    logic [31:0] alu_src_b;         // alu source data B
     // *** ALU ***
-    logic [31:0] alu_out;
-    logic [31:0] alu_out_reg;
+    logic [31:0] alu_out;           // alu computation result
+    logic [31:0] alu_out_reg;       // intermediate register for alu output
 
     // BRAM
-    logic [31:0] mem_data_out;
-    logic [MEM_ADDR_BIT-1:0] mem_addr;
+    logic [31:0] mem_data_out;      // data retrieved from main RAM
+    logic [MEM_ADDR_BIT-1:0] mem_addr;  // main RAM access address
 
     // BRAM formatting
-    logic        bram_mode;
-    logic [31:0] formatted_mem_out;
-
-    // Store source data
-    // value read from reg2, for sb sx sh 
-    // store instructions: store value from reg2 to memory
-    logic [31:0] store_data_reg; 
+    logic        bram_mode;         // 0: load, 1: store; for formatting rule determination
+    logic [31:0] formatted_mem_out; // retreived data from main RAM  after formatted
 
     // System call
-    logic        ecall_sel;        // 0 tx, 1 rx
-    logic [31:0] syscall_out;     // reg10_out
+    logic        ecall_sel;         // 0 tx, 1 rx
+    logic [31:0] syscall_out;       // reg10_out, ie. input data from peripheral I/O
 
     // Writeback mux (register write from ecall ro normal register writeback from alu)
-    logic [31:0] final_reg_wdata;
-    logic [4:0]  final_reg_w_ind;
+    logic [31:0] final_reg_wdata;   // writeback data to register
+    logic [4:0]  final_reg_w_addr;  // writeback register address
 
     /** #################################
         ######## logic assignment #######
         ################################# */
     assign bram_mode = (opcode_reg == OP_STORE);
-    assign ecall_sel = (reg_data1_reg == 32'd1); // based on register x17, determine it's putchar or getchar
+    assign ecall_sel = (reg_data1_reg == 32'd1);    // based on register x17, determine it's putchar or getchar
 
     assign mem_addr = (state == FETCH) ? pc : alu_out_reg[MEM_ADDR_BIT-1:0];
 
     /** #################################
         #### submodule instantiation ####
         ################################# */
-    controller u_controller (
+    controller controller (
         .clk(clk),
         .rst(rst),
         .instr(instr_reg),
@@ -156,33 +152,33 @@ module cpu #(
         .ebreak_en(ebreak_en)
     );
 
-    register u_register (
+    register register (
         .clk(clk),
         .rst(rst),
         .reg_wen(reg_wen),
-        .reg_r_ind1(rs1),
-        .reg_r_ind2(rs2),
-        .reg_w_ind(final_reg_w_ind),
+        .reg_r_addr1(rs1),
+        .reg_r_addr2(rs2),
+        .reg_w_addr(final_reg_w_addr),
         .reg_wdata(final_reg_wdata),
         .reg_data1(reg_data1),
         .reg_data2(reg_data2)
     );
 
-    alu_data_src_mux u_alu_data_src_mux (
-    .opcode(opcode_reg),
-    .func3(func3_reg),
-    .imm_I(imm_I_reg),
-    .imm_S(imm_S_reg),
-    .imm_U(imm_U_reg),
-    .rs1_data(reg_data1_reg),
-    .rs2_data(reg_data2_reg),
-    .pc(pc),
+    alu_data_src_mux alu_data_src_mux (
+        .opcode(opcode_reg),
+        .func3(func3_reg),
+        .imm_I(imm_I_reg),
+        .imm_S(imm_S_reg),
+        .imm_U(imm_U_reg),
+        .rs1_data(reg_data1_reg),
+        .rs2_data(reg_data2_reg),
+        .pc(pc),
 
-    .alu_src_a(alu_src_a),
-    .alu_src_b(alu_src_b)
-);
+        .alu_src_a(alu_src_a),
+        .alu_src_b(alu_src_b)
+    );
 
-    alu u_alu (
+    alu alu (
         .alu_op_sel(alu_op_sel_reg),
         .alu_src_a(alu_src_a),
         .alu_src_b(alu_src_b),
@@ -220,7 +216,7 @@ module cpu #(
         .func3(func3_reg),
         .addr_offset(alu_out_reg[1:0]),
         .mem_in(mem_data_out),
-        .reg_in(store_data_reg),
+        .reg_in(reg_data2_reg),
         .formatted_mem_out(formatted_mem_out)
     );
 
@@ -256,15 +252,12 @@ module cpu #(
         .syscall_out(syscall_out),
 
         .final_reg_wdata(final_reg_wdata),
-        .final_reg_w_ind(final_reg_w_ind)
+        .final_reg_w_addr(final_reg_w_addr)
     );
 
     // intermediate flip flops for latches over states
     always_ff @(posedge clk) begin
         if (rst) begin
-            alu_op_sel_reg    <= '0;
-            alu_out_reg       <= '0;
-            store_data_reg    <= '0;
             opcode_reg        <= '0;
             rd_reg            <= '0;
             func3_reg         <= '0;
@@ -278,15 +271,16 @@ module cpu #(
             imm_J_reg         <= '0;
             reg_data1_reg     <= '0;
             reg_data2_reg     <= '0;
+            alu_op_sel_reg    <= '0;
+            alu_out_reg       <= '0;
         end
 
         else begin
-            // note: mem_data_out both retrieve from bram at the clock edge, so the new data is only available at the next cycle
+            // note: mem_data_out is retrieved from bram at the clock edge,
+            //       so the new data is only available at the next cycle
             if (state == IR)      instr_reg   <= mem_data_out;
             if (state == EXECUTE) alu_out_reg <= alu_out;
             if (state == DECODE) begin
-                alu_op_sel_reg    <= alu_op_sel;
-                store_data_reg    <= reg_data2;
                 opcode_reg        <= opcode;
                 rd_reg            <= rd;
                 func3_reg         <= func3;
@@ -300,6 +294,7 @@ module cpu #(
                 imm_J_reg         <= imm_J;
                 reg_data1_reg     <= reg_data1;
                 reg_data2_reg     <= reg_data2;
+                alu_op_sel_reg    <= alu_op_sel;
             end
         end 
     end

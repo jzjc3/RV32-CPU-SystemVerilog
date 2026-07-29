@@ -1,11 +1,14 @@
+/** bram_formatting.sv
+  * Formats BRAM read/write data for byte, halfword, and word load/store ops.
+  */
 module bram_formatting(
     input  logic mode, // 0: load, 1: store
-    input  logic [2:0]  func3,
+    input  logic [2:0]  func3,        // load/store size and signedness field
     input  logic [1:0]  addr_offset,  // eff_addr[1:0]
     input  logic [31:0] mem_in,       // for STORE case
-    input  logic [31:0] reg_in,
+    input  logic [31:0] reg_in,       // store source register data
 
-    output logic [31:0] formatted_mem_out
+    output logic [31:0] formatted_mem_out // formatted load data or merged store word
 );
 
     // MUX for which byte/halfword to select (byte_aligned purpose)

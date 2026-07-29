@@ -23,16 +23,16 @@ module fifo #(
     parameter int WIDTH = 8,
     parameter int DEPTH = 16
 ) (
-    input  logic             clk,
-    input  logic             rst,
-    input  logic             push,
-    input  logic [WIDTH-1:0] wdata,
-    output logic             full,
-    input  logic             pop,
-    output logic [WIDTH-1:0] rdata,
-    output logic             empty,
-    output logic [7:0]       count,
-    output logic             overflow
+    input  logic             clk,      // system clock
+    input  logic             rst,      // synchronous reset
+    input  logic             push,     // enqueue strobe
+    input  logic [WIDTH-1:0] wdata,    // data to enqueue
+    output logic             full,     // FIFO full status
+    input  logic             pop,      // dequeue strobe
+    output logic [WIDTH-1:0] rdata,    // oldest queued data
+    output logic             empty,    // FIFO empty status
+    output logic [7:0]       count,    // number of queued entries
+    output logic             overflow  // sticky overflow flag
 );
 
     logic [DEPTH * WIDTH - 1 : 0] fifo_buffer;

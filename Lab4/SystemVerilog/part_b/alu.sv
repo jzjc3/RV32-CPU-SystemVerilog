@@ -10,7 +10,7 @@ module alu(
     input  logic [31:0] alu_src_a,     // alu calculation data source A
     input  logic [31:0] alu_src_b,     // alu calculation data source B
 
-    output logic [31:0] alu_out
+    output logic [31:0] alu_out        // ALU result or branch-taken flag
 );
     always_comb begin : alu_operation_AND_mux // do operaion and select output based on alu_op_sel line
         case (alu_op_sel)

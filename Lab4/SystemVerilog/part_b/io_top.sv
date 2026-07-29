@@ -3,15 +3,15 @@
 //   i2c_target <-> io_bridge <-> fifo x2 (rx, tx) <-> cpu.   BTN0 = CPU reset.
 // 7-seg = last byte that crossed a FIFO. Runs on the raw 100 MHz osc.
 module io_top (
-    input  logic        CLOCK_100,
-    input  logic        scl,
-    inout  logic        sda,
-    input  logic        BTN0,
-    output logic [15:0] LD,
-    output logic [3:0]  D1_AN,
-    output logic [7:0]  D1_SEG,
-    output logic [3:0]  D2_AN,
-    output logic [7:0]  D2_SEG
+    input  logic        CLOCK_100, // 100 MHz board clock
+    input  logic        scl,       // I2C serial clock
+    inout  logic        sda,       // I2C open-drain serial data
+    input  logic        BTN0,      // board reset button
+    output logic [15:0] LD,        // board LEDs
+    output logic [3:0]  D1_AN,     // display 1 anode enables
+    output logic [7:0]  D1_SEG,    // display 1 segment outputs
+    output logic [3:0]  D2_AN,     // display 2 anode enables
+    output logic [7:0]  D2_SEG     // display 2 segment outputs
 );
     logic scl_s, sda_s, rst_s;
     Synchronizer u_sync_scl (.async(scl),  .clock(CLOCK_100), .sync(scl_s));

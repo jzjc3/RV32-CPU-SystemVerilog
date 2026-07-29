@@ -2,8 +2,9 @@
 // (register decode over two `fifo` buffers). You implement `fifo` in fifo.sv.
 
 module Synchronizer
-    (input  logic async, clock,
-     output logic sync);
+    (input  logic async, // asynchronous input signal
+     input  logic clock, // destination clock
+     output logic sync); // synchronized output signal
 
     logic temp;
     always_ff @(posedge clock) begin
@@ -17,16 +18,16 @@ endmodule : Synchronizer
 // transaction, shifts out rd_data (rd_load strobes each byte consumed). addr_match
 // pulses when an address byte addressed to us completes; is_read is its R/W bit.
 module i2c_target (
-    input  logic       clk,
-    input  logic       scl,
-    input  logic       sda,
-    output logic       drive_sda,
-    output logic [7:0] data,
-    output logic       ready,
-    output logic       addr_match,
-    output logic       is_read,
-    input  logic [7:0] rd_data,
-    output logic       rd_load
+    input  logic       clk,       // system clock
+    input  logic       scl,       // synchronized I2C serial clock
+    input  logic       sda,       // synchronized I2C serial data
+    output logic       drive_sda, // asserted to pull SDA low
+    output logic [7:0] data,      // captured write byte
+    output logic       ready,     // strobe when write data is valid
+    output logic       addr_match,// strobe when device address matches
+    output logic       is_read,   // current I2C transaction direction
+    input  logic [7:0] rd_data,   // byte to shift out during read
+    output logic       rd_load    // strobe requesting next read byte
 );
     localparam logic [6:0] I2C_ADDR = 7'h50;
 
@@ -141,26 +142,26 @@ endmodule : i2c_target
 //   0x03 RXCOUNT          0x04 TXCOUNT
 // CPU side: it pops rx (getchar) and pushes tx (putchar) -- wired up in io_top.
 module io_bridge (
-    input  logic       clk,
-    input  logic       rst,
-    input  logic [7:0] data,
-    input  logic       ready,
-    input  logic       addr_match,
-    input  logic       is_read,
-    output logic [7:0] rd_data,
-    input  logic       rd_load,
+    input  logic       clk,       // system clock
+    input  logic       rst,       // synchronous reset
+    input  logic [7:0] data,      // captured I2C write byte
+    input  logic       ready,     // I2C write-byte valid strobe
+    input  logic       addr_match,// I2C address-match strobe
+    input  logic       is_read,   // I2C read transaction indicator
+    output logic [7:0] rd_data,   // byte returned to I2C target
+    input  logic       rd_load,   // I2C read-byte consumed strobe
     // CPU mailbox: the CPU consumes rx (pop) and produces tx (push).
-    output logic       rx_empty,
-    output logic [7:0] rx_data,
-    input  logic       rx_pop,
-    output logic       tx_full,
-    input  logic [7:0] tx_data,
-    input  logic       tx_push,
+    output logic       rx_empty,  // RX FIFO empty status to CPU
+    output logic [7:0] rx_data,   // RX FIFO data to CPU
+    input  logic       rx_pop,    // CPU pop strobe for RX FIFO
+    output logic       tx_full,   // TX FIFO full status to CPU
+    input  logic [7:0] tx_data,   // TX FIFO data from CPU
+    input  logic       tx_push,   // CPU push strobe for TX FIFO
     // board debug
-    output logic [7:0] dbg_last,
-    output logic [7:0] dbg_rx_count,
-    output logic [7:0] dbg_tx_count,
-    output logic       dbg_overflow
+    output logic [7:0] dbg_last,     // last byte crossing either FIFO
+    output logic [7:0] dbg_rx_count, // RX FIFO occupancy
+    output logic [7:0] dbg_tx_count, // TX FIFO occupancy
+    output logic       dbg_overflow  // combined FIFO overflow indicator
 );
     localparam logic [7:0] REG_STATUS  = 8'h00;
     localparam logic [7:0] REG_RX      = 8'h01;

@@ -1,25 +1,28 @@
 import cpu_pkg::*;
 
+/** alu_data_src_mux.sv
+  * Selects ALU source operands from register data, immediates, PC, or constants.
+  */
 module alu_data_src_mux(
     // all inputs are from decoder/controller. some are formatted
-    input  logic [6:0]  opcode,
+    input  logic [6:0]  opcode,         // instruction opcode
 
-    input  logic [2:0]  func3,
+    input  logic [2:0]  func3,          // instruction func3 field
 
     // Immediates: all immediates below are alr normalized to 32 bits (sign-extended)
-    input  logic [31:0] imm_I, // 12
-    input  logic [31:0] imm_S, // 12
-    input  logic [31:0] imm_U, // 32   // upper 20 bits
+    input  logic [31:0] imm_I,          // 12
+    input  logic [31:0] imm_S,          // 12
+    input  logic [31:0] imm_U,          // 32   // upper 20 bits
 
     // Register data
-    input  logic [31:0] rs1_data,
-    input  logic [31:0] rs2_data,
+    input  logic [31:0] rs1_data,       // latched rs1 register data
+    input  logic [31:0] rs2_data,       // latched rs2 register data
 
     // PC data
-    input  logic [MEM_ADDR_BIT-1:0] pc,
+    input  logic [MEM_ADDR_BIT-1:0] pc, // current program counter
 
-    output logic [31:0] alu_src_a,
-    output logic [31:0] alu_src_b
+    output logic [31:0] alu_src_a,      // selected ALU source A
+    output logic [31:0] alu_src_b       // selected ALU source B
 );
     // data 1: rs1_data, pc
     // data 2: rs2_data, imm_I, imm_I[4:0], imm_U, imm_S, imm_J, 32'd4
@@ -44,9 +47,7 @@ module alu_data_src_mux(
         alu_src_b = rs2_data; // default for R-type / branch compare
 
         case (opcode)
-            OP_REGISTER: begin
-                alu_src_b = rs2_data;
-            end
+            OP_REGISTER: alu_src_b = rs2_data;
 
             OP_IMM: begin
                 case (func3)

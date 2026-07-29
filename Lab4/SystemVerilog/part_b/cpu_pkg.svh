@@ -3,17 +3,19 @@ package cpu_pkg;
     parameter int MEM_LINE = MEM_SIZE_BYTES / 4;
     parameter int MEM_ADDR_BIT = $clog2(MEM_SIZE_BYTES);
 
+    // FSM states
     typedef enum logic [2:0]{
-      FETCH,
-      IR,  // Istore fetched instruction into nstruction Register
-      DECODE,
-      EXECUTE,
-      MEM1,
-      MEM2, 
-      WRITEBACK,
-      HALT
+        FETCH,
+        IR,  // Istore fetched instruction into nstruction Register
+        DECODE,
+        EXECUTE,
+        MEM1,
+        MEM2,
+        WRITEBACK,
+        HALT
     } state_t;
 
+    // OPCODE
     typedef enum logic [6:0]{
         OP_REGISTER = 7'b0110011, // R-type
         OP_IMM      = 7'b0010011, // I-type
@@ -27,6 +29,7 @@ package cpu_pkg;
         OP_SYSTEM   = 7'b1110011  // System
     } opcode_t;
 
+    // ALU OPERATIONS
     typedef enum logic [4:0] {
         ALU_ADD,
         ALU_SUB,

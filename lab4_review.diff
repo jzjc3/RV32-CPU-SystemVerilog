@@ -1,0 +1,849 @@
+diff --git a/Lab4/SystemVerilog/part_b/alu.sv b/Lab4/SystemVerilog/part_b/alu.sv
+index 1e633a8..51d5bfa 100644
+--- a/Lab4/SystemVerilog/part_b/alu.sv
++++ b/Lab4/SystemVerilog/part_b/alu.sv
+@@ -10,7 +10,7 @@ module alu(
+     input  logic [31:0] alu_src_a,     // alu calculation data source A
+     input  logic [31:0] alu_src_b,     // alu calculation data source B
+ 
+-    output logic [31:0] alu_out
++    output logic [31:0] alu_out        // ALU result or branch-taken flag
+ );
+     always_comb begin : alu_operation_AND_mux // do operaion and select output based on alu_op_sel line
+         case (alu_op_sel)
+@@ -39,4 +39,4 @@ module alu(
+         endcase
+     end
+  
+-endmodule
+\ No newline at end of file
++endmodule
+diff --git a/Lab4/SystemVerilog/part_b/alu_data_src_mux.sv b/Lab4/SystemVerilog/part_b/alu_data_src_mux.sv
+index fe6cf20..23e8c3c 100644
+--- a/Lab4/SystemVerilog/part_b/alu_data_src_mux.sv
++++ b/Lab4/SystemVerilog/part_b/alu_data_src_mux.sv
+@@ -1,10 +1,13 @@
+ import cpu_pkg::*;
+ 
++/** alu_data_src_mux.sv
++  * Selects ALU source operands from register data, immediates, PC, or constants.
++  */
+ module alu_data_src_mux(
+     // all inputs are from decoder/controller. some are formatted
+-    input  logic [6:0]  opcode,
++    input  logic [6:0]  opcode,   // instruction opcode
+ 
+-    input  logic [2:0]  func3,
++    input  logic [2:0]  func3,    // instruction func3 field
+ 
+     // Immediates: all immediates below are alr normalized to 32 bits (sign-extended)
+     input  logic [31:0] imm_I, // 12
+@@ -12,14 +15,14 @@ module alu_data_src_mux(
+     input  logic [31:0] imm_U, // 32   // upper 20 bits
+ 
+     // Register data
+-    input  logic [31:0] rs1_data,
+-    input  logic [31:0] rs2_data,
++    input  logic [31:0] rs1_data, // latched rs1 register data
++    input  logic [31:0] rs2_data, // latched rs2 register data
+ 
+     // PC data
+-    input  logic [MEM_ADDR_BIT-1:0] pc,
++    input  logic [MEM_ADDR_BIT-1:0] pc, // current program counter
+ 
+-    output logic [31:0] alu_src_a,
+-    output logic [31:0] alu_src_b
++    output logic [31:0] alu_src_a, // selected ALU source A
++    output logic [31:0] alu_src_b  // selected ALU source B
+ );
+     // data 1: rs1_data, pc
+     // data 2: rs2_data, imm_I, imm_I[4:0], imm_U, imm_S, imm_J, 32'd4
+@@ -84,4 +87,4 @@ module alu_data_src_mux(
+         endcase
+     end
+ 
+-endmodule
+\ No newline at end of file
++endmodule
+diff --git a/Lab4/SystemVerilog/part_b/bram.sv b/Lab4/SystemVerilog/part_b/bram.sv
+index b4c28d1..f6903ea 100644
+--- a/Lab4/SystemVerilog/part_b/bram.sv
++++ b/Lab4/SystemVerilog/part_b/bram.sv
+@@ -1,10 +1,13 @@
+ import cpu_pkg::*;
+ 
++/** bram.sv
++  * Synchronous word-addressed BRAM used for instruction fetch and data access.
++  */
+ module bram #(
+     parameter INIT_FILE = "mems/test0.mem"
+ )(
+-    input  logic rst,
+-    input  logic clk,
++    input  logic rst, // synchronous reset for read data output
++    input  logic clk, // system clock
+     input  logic mem_ren, // at mem1 state, can only read
+     input  logic mem_wen, // at mem2 state: 1) if it's load: won't write back, 2) if it's store: will write back
+     // note: if the instruction is STORE, for both mem1 and mem2 stage the address into BRAM will be eff_addr
+@@ -35,4 +38,4 @@ module bram #(
+             mem[mem_addr_aligned] <= mem_data_in;
+         end
+     end
+-endmodule
+\ No newline at end of file
++endmodule
+diff --git a/Lab4/SystemVerilog/part_b/bram_formatting.sv b/Lab4/SystemVerilog/part_b/bram_formatting.sv
+index ed448b5..9fec7c5 100644
+--- a/Lab4/SystemVerilog/part_b/bram_formatting.sv
++++ b/Lab4/SystemVerilog/part_b/bram_formatting.sv
+@@ -1,11 +1,14 @@
++/** bram_formatting.sv
++  * Formats BRAM read/write data for byte, halfword, and word load/store ops.
++  */
+ module bram_formatting(
+     input  logic mode, // 0: load, 1: store
+-    input  logic [2:0]  func3,
++    input  logic [2:0]  func3,        // load/store size and signedness field
+     input  logic [1:0]  addr_offset,  // eff_addr[1:0]
+     input  logic [31:0] mem_in,       // for STORE case
+-    input  logic [31:0] reg_in,
++    input  logic [31:0] reg_in,       // store source register data
+ 
+-    output logic [31:0] formatted_mem_out
++    output logic [31:0] formatted_mem_out // formatted load data or merged store word
+ );
+ 
+     // MUX for which byte/halfword to select (byte_aligned purpose)
+@@ -93,4 +96,4 @@ module bram_formatting(
+         endcase
+     end
+ 
+-endmodule
+\ No newline at end of file
++endmodule
+diff --git a/Lab4/SystemVerilog/part_b/controller.sv b/Lab4/SystemVerilog/part_b/controller.sv
+index 98de784..38d0dc5 100644
+--- a/Lab4/SystemVerilog/part_b/controller.sv
++++ b/Lab4/SystemVerilog/part_b/controller.sv
+@@ -1,36 +1,34 @@
+ /** controller.sv
+-  *     instruction field extraction
+-  *     instruction type determination
+-  *     sequential: FSM
+-  *     control signal output generation
++  * Instruction decode, immediate generation, ALU control, FSM sequencing,
++  * and control-signal generation for the multi-cycle CPU.
+   */
+ 
+ import cpu_pkg::*;
+ 
+ // ecall block_signal, ebreak halt_signal as inputs
+ module controller(
+-  input  logic          clk,
+-  input  logic          rst,
++  input  logic          clk,          // system clock
++  input  logic          rst,          // synchronous reset
+   input  logic [31:0]   instr,         // from bram.sv 
+   input  logic          halt_signal,   // from system_call.sv
+   input  logic          block_signal,  // from system_call.sv
+-  input  logic          ecall_sel,
++  input  logic          ecall_sel,     // selected ecall direction from x17
+ 
+-  output state_t        state,
++  output state_t        state,         // current FSM state
+ 
+   // fields parsed from instruction
+-  output logic [6:0]    opcode,
+-  output logic [4:0]    rd,
+-  output logic [2:0]    func3,
+-  output logic [4:0]    rs1,
+-  output logic [4:0]    rs2,
+-  output logic [6:0]    func7,
+-
+-  output logic [31:0]   imm_I,
+-  output logic [31:0]   imm_S,
+-  output logic [31:0]   imm_B,
+-  output logic [31:0]   imm_U,
+-  output logic [31:0]   imm_J,
++  output logic [6:0]    opcode,        // decoded opcode field
++  output logic [4:0]    rd,            // decoded destination register address
++  output logic [2:0]    func3,         // decoded func3 field
++  output logic [4:0]    rs1,           // decoded source register 1 address
++  output logic [4:0]    rs2,           // decoded source register 2 address
++  output logic [6:0]    func7,         // decoded func7 field
++
++  output logic [31:0]   imm_I,         // sign-extended I-type immediate
++  output logic [31:0]   imm_S,         // sign-extended S-type immediate
++  output logic [31:0]   imm_B,         // sign-extended B-type branch offset
++  output logic [31:0]   imm_U,         // U-type upper immediate
++  output logic [31:0]   imm_J,         // sign-extended J-type jump offset
+ 
+   // control logics 
+   output alu_op_t       alu_op_sel,    // ALU operation selection
+@@ -65,7 +63,7 @@ module controller(
+       imm_J = {{11{instr[31]}}, instr[31], instr[19:12], instr[20], instr[30:21], 1'b0};
+   end
+ 
+-  // OP_BRANCH itselves is a special case because it does comparison instead of arithmetic operation on the two data fed to alu 
++  // OP_BRANCH is a special case because it does comparison instead of arithmetic operation on the two data fed to alu
+   always_comb begin : ALU_operation_selection
+     case (opcode)
+         OP_REGISTER,
+@@ -141,16 +139,17 @@ module controller(
+           HALT: next_state = HALT;
+           default: next_state = HALT;
+         endcase
+-      end 
++      end
+   end
+ 
++  // Sequential logic: latching FSM state
+   always_ff @(posedge clk) begin
+     if (rst) begin
+       state <= FETCH;
+     end
+     else begin
+       state <= next_state;
+-    end 
++    end
+   end
+ 
+   // Output SIGNAL / DEVICE CONTROL AND ACTIVATION SIGNAL generation
+diff --git a/Lab4/SystemVerilog/part_b/cpu.sv b/Lab4/SystemVerilog/part_b/cpu.sv
+index febc0f5..dbdd490 100644
+--- a/Lab4/SystemVerilog/part_b/cpu.sv
++++ b/Lab4/SystemVerilog/part_b/cpu.sv
+@@ -1,12 +1,13 @@
+-// instr_reg
+-// alu_out_reg
+-// mem_data_reg
+-// store_data_reg
++// Rule: how to know if a signal need to be latched
++//       1) If a value is produced in one FSM state but used in a later FSM state, latch it.
++//       2) If the producer is synchronous memory/BRAM, expect to latch or wait for its output.
++//       (because we cannot use it right away if it's not latched, cuz it's synchronous access)
+ 
+-// Q: how do we know if a signal need to be latched
+-// A: 1) If a value is produced in one FSM state but used in a later FSM state, latch it.
+-//    2) If the producer is synchronous memory/BRAM, expect to latch or wait for its output.
+-//      (because we cannot use it right away if it's not latched, cuz it's synchronous access)
++/** cpu.sv:
++  * Top CPU module: integrates controller, datapath, BRAM, and system I/O.
++  * Multi-cycle implementation with registered instruction, operands,
++  * ALU result, and control fields between FSM states.s
++  */
+ 
+ import cpu_pkg::*;
+ 
+@@ -34,8 +35,8 @@ module cpu #(
+     state_t state;                  // FSM state 
+ 
+     logic pc_en;                    // update PC register enable ctrl line
+-    logic mem_ren;                 // read main RAM enable ctrl line
+-    logic mem_wen;                 // write to main RAM enable ctrl line
++    logic mem_ren;                  // read main RAM enable ctrl line
++    logic mem_wen;                  // write to main RAM enable ctrl line
+     logic reg_wen;                  // write register enable ctrl line
+     logic ecall_en;                 // peripheral I/O enable line
+     logic ebreak_en;                // ebreak system call enable line
+@@ -43,10 +44,10 @@ module cpu #(
+     logic halt_signal;              // halting cpu signal
+ 
+     // PC
+-    logic [MEM_ADDR_BIT-1:0] pc;
++    logic [MEM_ADDR_BIT-1:0] pc;    // program counter
+ 
+     // Instruction
+-    logic [31:0] instr_reg;         // register that stores fetched instruction
++    logic [31:0] instr_reg;         // intermediate register that stores fetched instruction
+ 
+     // Decode
+     logic [6:0] opcode;
+@@ -57,19 +58,19 @@ module cpu #(
+     logic [6:0] func7;
+ 
+     // Immediates
+-    logic [31:0]  imm_I, imm_S, imm_B, imm_U, imm_J;
++    logic [31:0]  imm_I, imm_S, imm_B, imm_U, imm_J;    // formatted immediates extracted from instruction
+     
+     // Register
+-    logic [31:0] reg_data1;
+-    logic [31:0] reg_data2;
++    logic [31:0] reg_data1;         // data A retrieved from register
++    logic [31:0] reg_data2;         // data B retrieved from register
+ 
+     // Decode pipeline registers
+     logic [6:0]  opcode_reg;
+     logic [4:0]  rd_reg;
+     logic [2:0]  func3_reg;
+     logic [6:0]  func7_reg;
+-    logic [4:0]  rs1_reg;
+-    logic [4:0]  rs2_reg;
++    logic [4:0]  rs1_reg;           // intermediate register A for register access ADDRESS
++    logic [4:0]  rs2_reg;           // intermediate register B for register access ADDRESS
+ 
+     logic [31:0] imm_I_reg;
+     logic [31:0] imm_S_reg;
+@@ -77,53 +78,48 @@ module cpu #(
+     logic [31:0] imm_U_reg;
+     logic [31:0] imm_J_reg;
+ 
+-    logic [31:0] reg_data1_reg;
+-    logic [31:0] reg_data2_reg;
++    logic [31:0] reg_data1_reg;     // intermediate register A for DATA retrieved from register
++    logic [31:0] reg_data2_reg;     // intermediate register B for DATA retrieved from register
+ 
+     // ALU 
+     // *** decode stage ***
+-    alu_op_t     alu_op_sel;
+-    alu_op_t     alu_op_sel_reg;
++    alu_op_t     alu_op_sel;        // alu operation selection ctrl line
++    alu_op_t     alu_op_sel_reg;    // intermediate register for alu operation selection ctrl bits
+     // *** alu input data selection mux ***
+-    logic [31:0] alu_src_a;
+-    logic [31:0] alu_src_b;
++    logic [31:0] alu_src_a;         // alu source data A
++    logic [31:0] alu_src_b;         // alu source data B
+     // *** ALU ***
+-    logic [31:0] alu_out;
+-    logic [31:0] alu_out_reg;
++    logic [31:0] alu_out;           // alu computation result
++    logic [31:0] alu_out_reg;       // intermediate register for alu output
+ 
+     // BRAM
+-    logic [31:0] mem_data_out;
+-    logic [MEM_ADDR_BIT-1:0] mem_addr;
++    logic [31:0] mem_data_out;      // data retrieved from main RAM
++    logic [MEM_ADDR_BIT-1:0] mem_addr;  // main RAM access address
+ 
+     // BRAM formatting
+-    logic        bram_mode;
+-    logic [31:0] formatted_mem_out;
+-
+-    // Store source data
+-    // value read from reg2, for sb sx sh 
+-    // store instructions: store value from reg2 to memory
+-    logic [31:0] store_data_reg; 
++    logic        bram_mode;         // 0: load, 1: store; for formatting rule determination
++    logic [31:0] formatted_mem_out; // retreived data from main RAM  after formatted
+ 
+     // System call
+-    logic        ecall_sel;        // 0 tx, 1 rx
+-    logic [31:0] syscall_out;     // reg10_out
++    logic        ecall_sel;         // 0 tx, 1 rx
++    logic [31:0] syscall_out;       // reg10_out, ie. input data from peripheral I/O
+ 
+     // Writeback mux (register write from ecall ro normal register writeback from alu)
+-    logic [31:0] final_reg_wdata;
+-    logic [4:0]  final_reg_w_ind;
++    logic [31:0] final_reg_wdata;   // writeback data to register
++    logic [4:0]  final_reg_w_addr;  // writeback register address
+ 
+     /** #################################
+         ######## logic assignment #######
+         ################################# */
+     assign bram_mode = (opcode_reg == OP_STORE);
+-    assign ecall_sel = (reg_data1_reg == 32'd1); // based on register x17, determine it's putchar or getchar
++    assign ecall_sel = (reg_data1_reg == 32'd1);    // based on register x17, determine it's putchar or getchar
+ 
+     assign mem_addr = (state == FETCH) ? pc : alu_out_reg[MEM_ADDR_BIT-1:0];
+ 
+     /** #################################
+         #### submodule instantiation ####
+         ################################# */
+-    controller u_controller (
++    controller controller (
+         .clk(clk),
+         .rst(rst),
+         .instr(instr_reg),
+@@ -156,33 +152,33 @@ module cpu #(
+         .ebreak_en(ebreak_en)
+     );
+ 
+-    register u_register (
++    register register (
+         .clk(clk),
+         .rst(rst),
+         .reg_wen(reg_wen),
+-        .reg_r_ind1(rs1),
+-        .reg_r_ind2(rs2),
+-        .reg_w_ind(final_reg_w_ind),
++        .reg_r_addr1(rs1),
++        .reg_r_addr2(rs2),
++        .reg_w_addr(final_reg_w_addr),
+         .reg_wdata(final_reg_wdata),
+         .reg_data1(reg_data1),
+         .reg_data2(reg_data2)
+     );
+ 
+-    alu_data_src_mux u_alu_data_src_mux (
+-    .opcode(opcode_reg),
+-    .func3(func3_reg),
+-    .imm_I(imm_I_reg),
+-    .imm_S(imm_S_reg),
+-    .imm_U(imm_U_reg),
+-    .rs1_data(reg_data1_reg),
+-    .rs2_data(reg_data2_reg),
+-    .pc(pc),
+-
+-    .alu_src_a(alu_src_a),
+-    .alu_src_b(alu_src_b)
+-);
+-
+-    alu u_alu (
++    alu_data_src_mux alu_data_src_mux (
++        .opcode(opcode_reg),
++        .func3(func3_reg),
++        .imm_I(imm_I_reg),
++        .imm_S(imm_S_reg),
++        .imm_U(imm_U_reg),
++        .rs1_data(reg_data1_reg),
++        .rs2_data(reg_data2_reg),
++        .pc(pc),
++
++        .alu_src_a(alu_src_a),
++        .alu_src_b(alu_src_b)
++    );
++
++    alu alu (
+         .alu_op_sel(alu_op_sel_reg),
+         .alu_src_a(alu_src_a),
+         .alu_src_b(alu_src_b),
+@@ -220,7 +216,7 @@ module cpu #(
+         .func3(func3_reg),
+         .addr_offset(alu_out_reg[1:0]),
+         .mem_in(mem_data_out),
+-        .reg_in(store_data_reg),
++        .reg_in(reg_data2_reg),
+         .formatted_mem_out(formatted_mem_out)
+     );
+ 
+@@ -256,15 +252,12 @@ module cpu #(
+         .syscall_out(syscall_out),
+ 
+         .final_reg_wdata(final_reg_wdata),
+-        .final_reg_w_ind(final_reg_w_ind)
++        .final_reg_w_addr(final_reg_w_addr)
+     );
+ 
+     // intermediate flip flops for latches over states
+     always_ff @(posedge clk) begin
+         if (rst) begin
+-            alu_op_sel_reg    <= '0;
+-            alu_out_reg       <= '0;
+-            store_data_reg    <= '0;
+             opcode_reg        <= '0;
+             rd_reg            <= '0;
+             func3_reg         <= '0;
+@@ -278,15 +271,16 @@ module cpu #(
+             imm_J_reg         <= '0;
+             reg_data1_reg     <= '0;
+             reg_data2_reg     <= '0;
++            alu_op_sel_reg    <= '0;
++            alu_out_reg       <= '0;
+         end
+ 
+         else begin
+-            // note: mem_data_out both retrieve from bram at the clock edge, so the new data is only available at the next cycle
++            // note: mem_data_out is retrieved from bram at the clock edge,
++            //       so the new data is only available at the next cycle
+             if (state == IR)      instr_reg   <= mem_data_out;
+             if (state == EXECUTE) alu_out_reg <= alu_out;
+             if (state == DECODE) begin
+-                alu_op_sel_reg    <= alu_op_sel;
+-                store_data_reg    <= reg_data2;
+                 opcode_reg        <= opcode;
+                 rd_reg            <= rd;
+                 func3_reg         <= func3;
+@@ -300,8 +294,9 @@ module cpu #(
+                 imm_J_reg         <= imm_J;
+                 reg_data1_reg     <= reg_data1;
+                 reg_data2_reg     <= reg_data2;
++                alu_op_sel_reg    <= alu_op_sel;
+             end
+         end 
+     end
+ 
+-endmodule
+\ No newline at end of file
++endmodule
+diff --git a/Lab4/SystemVerilog/part_b/cpu_pkg.svh b/Lab4/SystemVerilog/part_b/cpu_pkg.svh
+index 2737c96..86b64ce 100644
+--- a/Lab4/SystemVerilog/part_b/cpu_pkg.svh
++++ b/Lab4/SystemVerilog/part_b/cpu_pkg.svh
+@@ -3,17 +3,19 @@ package cpu_pkg;
+     parameter int MEM_LINE = MEM_SIZE_BYTES / 4;
+     parameter int MEM_ADDR_BIT = $clog2(MEM_SIZE_BYTES);
+ 
++    // FSM states
+     typedef enum logic [2:0]{
+-      FETCH,
+-      IR,  // Istore fetched instruction into nstruction Register
+-      DECODE,
+-      EXECUTE,
+-      MEM1,
+-      MEM2, 
+-      WRITEBACK,
+-      HALT
++        FETCH,
++        IR,  // Istore fetched instruction into nstruction Register
++        DECODE,
++        EXECUTE,
++        MEM1,
++        MEM2,
++        WRITEBACK,
++        HALT
+     } state_t;
+ 
++    // OPCODE
+     typedef enum logic [6:0]{
+         OP_REGISTER = 7'b0110011, // R-type
+         OP_IMM      = 7'b0010011, // I-type
+@@ -27,6 +29,7 @@ package cpu_pkg;
+         OP_SYSTEM   = 7'b1110011  // System
+     } opcode_t;
+ 
++    // ALU OPERATIONS
+     typedef enum logic [4:0] {
+         ALU_ADD,
+         ALU_SUB,
+diff --git a/Lab4/SystemVerilog/part_b/fifo.sv b/Lab4/SystemVerilog/part_b/fifo.sv
+index 044585a..b81d098 100644
+--- a/Lab4/SystemVerilog/part_b/fifo.sv
++++ b/Lab4/SystemVerilog/part_b/fifo.sv
+@@ -23,16 +23,16 @@ module fifo #(
+     parameter int WIDTH = 8,
+     parameter int DEPTH = 16
+ ) (
+-    input  logic             clk,
+-    input  logic             rst,
+-    input  logic             push,
+-    input  logic [WIDTH-1:0] wdata,
+-    output logic             full,
+-    input  logic             pop,
+-    output logic [WIDTH-1:0] rdata,
+-    output logic             empty,
+-    output logic [7:0]       count,
+-    output logic             overflow
++    input  logic             clk,      // system clock
++    input  logic             rst,      // synchronous reset
++    input  logic             push,     // enqueue strobe
++    input  logic [WIDTH-1:0] wdata,    // data to enqueue
++    output logic             full,     // FIFO full status
++    input  logic             pop,      // dequeue strobe
++    output logic [WIDTH-1:0] rdata,    // oldest queued data
++    output logic             empty,    // FIFO empty status
++    output logic [7:0]       count,    // number of queued entries
++    output logic             overflow  // sticky overflow flag
+ );
+ 
+     logic [DEPTH * WIDTH - 1 : 0] fifo_buffer;
+diff --git a/Lab4/SystemVerilog/part_b/fpga_io.sv b/Lab4/SystemVerilog/part_b/fpga_io.sv
+index 804d9bb..3761287 100644
+--- a/Lab4/SystemVerilog/part_b/fpga_io.sv
++++ b/Lab4/SystemVerilog/part_b/fpga_io.sv
+@@ -2,8 +2,9 @@
+ // (register decode over two `fifo` buffers). You implement `fifo` in fifo.sv.
+ 
+ module Synchronizer
+-    (input  logic async, clock,
+-     output logic sync);
++    (input  logic async, // asynchronous input signal
++     input  logic clock, // destination clock
++     output logic sync); // synchronized output signal
+ 
+     logic temp;
+     always_ff @(posedge clock) begin
+@@ -17,16 +18,16 @@ endmodule : Synchronizer
+ // transaction, shifts out rd_data (rd_load strobes each byte consumed). addr_match
+ // pulses when an address byte addressed to us completes; is_read is its R/W bit.
+ module i2c_target (
+-    input  logic       clk,
+-    input  logic       scl,
+-    input  logic       sda,
+-    output logic       drive_sda,
+-    output logic [7:0] data,
+-    output logic       ready,
+-    output logic       addr_match,
+-    output logic       is_read,
+-    input  logic [7:0] rd_data,
+-    output logic       rd_load
++    input  logic       clk,       // system clock
++    input  logic       scl,       // synchronized I2C serial clock
++    input  logic       sda,       // synchronized I2C serial data
++    output logic       drive_sda, // asserted to pull SDA low
++    output logic [7:0] data,      // captured write byte
++    output logic       ready,     // strobe when write data is valid
++    output logic       addr_match,// strobe when device address matches
++    output logic       is_read,   // current I2C transaction direction
++    input  logic [7:0] rd_data,   // byte to shift out during read
++    output logic       rd_load    // strobe requesting next read byte
+ );
+     localparam logic [6:0] I2C_ADDR = 7'h50;
+ 
+@@ -141,26 +142,26 @@ endmodule : i2c_target
+ //   0x03 RXCOUNT          0x04 TXCOUNT
+ // CPU side: it pops rx (getchar) and pushes tx (putchar) -- wired up in io_top.
+ module io_bridge (
+-    input  logic       clk,
+-    input  logic       rst,
+-    input  logic [7:0] data,
+-    input  logic       ready,
+-    input  logic       addr_match,
+-    input  logic       is_read,
+-    output logic [7:0] rd_data,
+-    input  logic       rd_load,
++    input  logic       clk,       // system clock
++    input  logic       rst,       // synchronous reset
++    input  logic [7:0] data,      // captured I2C write byte
++    input  logic       ready,     // I2C write-byte valid strobe
++    input  logic       addr_match,// I2C address-match strobe
++    input  logic       is_read,   // I2C read transaction indicator
++    output logic [7:0] rd_data,   // byte returned to I2C target
++    input  logic       rd_load,   // I2C read-byte consumed strobe
+     // CPU mailbox: the CPU consumes rx (pop) and produces tx (push).
+-    output logic       rx_empty,
+-    output logic [7:0] rx_data,
+-    input  logic       rx_pop,
+-    output logic       tx_full,
+-    input  logic [7:0] tx_data,
+-    input  logic       tx_push,
++    output logic       rx_empty,  // RX FIFO empty status to CPU
++    output logic [7:0] rx_data,   // RX FIFO data to CPU
++    input  logic       rx_pop,    // CPU pop strobe for RX FIFO
++    output logic       tx_full,   // TX FIFO full status to CPU
++    input  logic [7:0] tx_data,   // TX FIFO data from CPU
++    input  logic       tx_push,   // CPU push strobe for TX FIFO
+     // board debug
+-    output logic [7:0] dbg_last,
+-    output logic [7:0] dbg_rx_count,
+-    output logic [7:0] dbg_tx_count,
+-    output logic       dbg_overflow
++    output logic [7:0] dbg_last,     // last byte crossing either FIFO
++    output logic [7:0] dbg_rx_count, // RX FIFO occupancy
++    output logic [7:0] dbg_tx_count, // TX FIFO occupancy
++    output logic       dbg_overflow  // combined FIFO overflow indicator
+ );
+     localparam logic [7:0] REG_STATUS  = 8'h00;
+     localparam logic [7:0] REG_RX      = 8'h01;
+diff --git a/Lab4/SystemVerilog/part_b/io_top.sv b/Lab4/SystemVerilog/part_b/io_top.sv
+index be3420f..d7a14e7 100644
+--- a/Lab4/SystemVerilog/part_b/io_top.sv
++++ b/Lab4/SystemVerilog/part_b/io_top.sv
+@@ -3,15 +3,15 @@
+ //   i2c_target <-> io_bridge <-> fifo x2 (rx, tx) <-> cpu.   BTN0 = CPU reset.
+ // 7-seg = last byte that crossed a FIFO. Runs on the raw 100 MHz osc.
+ module io_top (
+-    input  logic        CLOCK_100,
+-    input  logic        scl,
+-    inout  logic        sda,
+-    input  logic        BTN0,
+-    output logic [15:0] LD,
+-    output logic [3:0]  D1_AN,
+-    output logic [7:0]  D1_SEG,
+-    output logic [3:0]  D2_AN,
+-    output logic [7:0]  D2_SEG
++    input  logic        CLOCK_100, // 100 MHz board clock
++    input  logic        scl,       // I2C serial clock
++    inout  logic        sda,       // I2C open-drain serial data
++    input  logic        BTN0,      // board reset button
++    output logic [15:0] LD,        // board LEDs
++    output logic [3:0]  D1_AN,     // display 1 anode enables
++    output logic [7:0]  D1_SEG,    // display 1 segment outputs
++    output logic [3:0]  D2_AN,     // display 2 anode enables
++    output logic [7:0]  D2_SEG     // display 2 segment outputs
+ );
+     logic scl_s, sda_s, rst_s;
+     Synchronizer u_sync_scl (.async(scl),  .clock(CLOCK_100), .sync(scl_s));
+diff --git a/Lab4/SystemVerilog/part_b/pc.sv b/Lab4/SystemVerilog/part_b/pc.sv
+index 90cc74f..1778eb4 100644
+--- a/Lab4/SystemVerilog/part_b/pc.sv
++++ b/Lab4/SystemVerilog/part_b/pc.sv
+@@ -7,16 +7,16 @@
+ import cpu_pkg::*;
+ 
+ module PC (
+-    input  logic        clk,
+-    input  logic        rst,
++    input  logic        clk,           // system clock
++    input  logic        rst,           // synchronous reset
+     input  logic        pc_en,          // if the PC module/device should be activicated
+-    input  logic [6:0]  opcode,
++    input  logic [6:0]  opcode,        // latched instruction opcode
+     input  logic [31:0] alu_out,        // for BRANCH: T/F signal for go to branch or no
+     input  logic [31:0] imm_B,          // branching address depends on value of imm_B
+-    input  logic [31:0] imm_J,
+-    input  logic [31:0] imm_I,
++    input  logic [31:0] imm_J,         // JAL immediate offset
++    input  logic [31:0] imm_I,         // JALR immediate offset
+     input  logic [31:0] rs1_data,       // JALR jump address depends on value stored in register 1
+-    output logic [MEM_ADDR_BIT-1:0] pc
++    output logic [MEM_ADDR_BIT-1:0] pc // current program counter
+ );
+     logic [MEM_ADDR_BIT-1:0] next_pc;
+ 
+@@ -41,4 +41,4 @@ module PC (
+         end
+     end 
+ 
+-endmodule
+\ No newline at end of file
++endmodule
+diff --git a/Lab4/SystemVerilog/part_b/register.sv b/Lab4/SystemVerilog/part_b/register.sv
+index fcf2320..a57565d 100644
+--- a/Lab4/SystemVerilog/part_b/register.sv
++++ b/Lab4/SystemVerilog/part_b/register.sv
+@@ -1,31 +1,32 @@
++/** register.sv
++  * 32-entry integer register file with two read ports and one write port.
++  */
+ module register(
+-    input logic clk,
+-    input logic rst,
+-    input  logic reg_wen,    // note: normal writeback & ecall writeback
+-    input  logic [4:0]  reg_r_ind1, // register index, ie. which register to read from; if is_ecall, ind1 = x17, ind2 = x10
+-    input  logic [4:0]  reg_r_ind2,
+-    input  logic [4:0]  reg_w_ind,  // normal instruction, ind = rd; is_ecall, ind_10
+-    input  logic [31:0] reg_wdata,
+-    output logic [31:0] reg_data1,
+-    output logic [31:0] reg_data2
++    input  logic clk,                  // system clock
++    input  logic rst,                  // synchronous reset
++    input  logic reg_wen,               // note: normal writeback & ecall writeback
++    input  logic [4:0]  reg_r_addr1,    // register addrex, ie. which register to read from; if is_ecall, addr1 = x17, addr2 = x10
++    input  logic [4:0]  reg_r_addr2,    // second read register address
++    input  logic [4:0]  reg_w_addr,     // normal instruction;
++                                        // address = rd; is_ecall, address = addr_10
++    input  logic [31:0] reg_wdata,      // writeback data
++    output logic [31:0] reg_data1,      // first read data
++    output logic [31:0] reg_data2       // second read data
+ ); 
+ 
+     logic [31:0] regs [31:0];
+ 
+-    assign reg_data1 = (reg_r_ind1 == 5'd0) ? 32'd0 : regs[reg_r_ind1];
+-    assign reg_data2 = (reg_r_ind2 == 5'd0) ? 32'd0 : regs[reg_r_ind2];
++    // read from register is combinational
++    assign reg_data1 = (reg_r_addr1 == 5'd0) ? 32'd0 : regs[reg_r_addr1];
++    assign reg_data2 = (reg_r_addr2 == 5'd0) ? 32'd0 : regs[reg_r_addr2];
+ 
++    // write to register is sequential
+     always_ff @(posedge clk) begin
+-        if (rst) begin
+-            for (int i = 0; i < 32; i++) begin
+-                regs[i] <= '0;
+-            end
+-        end
+-
+-        else if (reg_wen) begin
+-            regs[reg_w_ind] <= (reg_w_ind == 5'd0) ? 32'd0 : reg_wdata;
+-        end
++        if (rst)
++            for (int i = 0; i < 32; i++) regs[i] <= '0;
+ 
++        else if (reg_wen)
++            regs[reg_w_addr] <= (reg_w_addr == 5'd0) ? 32'd0 : reg_wdata;
+     end
+ 
+-endmodule
+\ No newline at end of file
++endmodule
+diff --git a/Lab4/SystemVerilog/part_b/system_call.sv b/Lab4/SystemVerilog/part_b/system_call.sv
+index d1fed4e..5ab17af 100644
+--- a/Lab4/SystemVerilog/part_b/system_call.sv
++++ b/Lab4/SystemVerilog/part_b/system_call.sv
+@@ -1,25 +1,28 @@
++/** system_call.sv
++  * Handles ecall/ebreak side effects for getchar, putchar, and halt.
++  */
+ module system_call #(
+     parameter int WIDTH = 8
+ ) (
+-    input rst,
+-    input clk,
++    input rst, // synchronous reset
++    input clk, // system clock
+ 
+     input  logic ecall_en, // during writeback stage as well
+     input  logic ebreak_en, // during writeback stage
+     input  logic ecall_sel, // from register x17, 0: tx, 1: rx
+ 
+-    input  logic rx_empty,
+-    input  logic [WIDTH-1:0] rx_data,
+-    output logic rx_pop,
++    input  logic rx_empty, // RX FIFO empty status
++    input  logic [WIDTH-1:0] rx_data, // byte read from RX FIFO
++    output logic rx_pop, // pop strobe for RX FIFO
+     output logic [31:0] reg10_out, // feed to register x10
+ 
+-    input  logic [31:0] reg10_in, // from register x10
+-    input  logic tx_full,
+-    output logic [7:0] tx_data,
+-    output logic tx_push,
++    input  logic [31:0] reg10_in,  // from register x10
++    input  logic tx_full, // TX FIFO full status
++    output logic [7:0] tx_data, // byte written to TX FIFO
++    output logic tx_push, // push strobe for TX FIFO
+ 
+-    output logic halt_signal,
+-    output logic block_signal
++    output logic halt_signal, // asserted for ebreak halt
++    output logic block_signal // asserted when ecall cannot complete
+     );
+ 
+     always_comb begin
+@@ -56,4 +59,4 @@ module system_call #(
+         end
+     end 
+ 
+-endmodule
+\ No newline at end of file
++endmodule
+diff --git a/Lab4/SystemVerilog/part_b/writeback_mux.sv b/Lab4/SystemVerilog/part_b/writeback_mux.sv
+index a55c8d9..d319b4e 100644
+--- a/Lab4/SystemVerilog/part_b/writeback_mux.sv
++++ b/Lab4/SystemVerilog/part_b/writeback_mux.sv
+@@ -1,17 +1,20 @@
+ import cpu_pkg::*;
+ 
++/** writeback_mux.sv
++  * Selects register writeback data/address from normal execution or getchar.
++  */
+ module writeback_mux (
+-    input  logic [6:0]  opcode,
+-    input  logic [4:0]  rd,
+-    input  logic [31:0] alu_out_reg,
+-    input  logic [31:0] mem_out,
+-    input  logic        ecall_en,
++    input  logic [6:0]  opcode,        // latched instruction opcode
++    input  logic [4:0]  rd,            // latched destination register address
++    input  logic [31:0] alu_out_reg,   // latched ALU result
++    input  logic [31:0] mem_out,       // formatted load data
++    input  logic        ecall_en,      // active during ecall writeback
+     input  logic        ecall_sel,      // 0: putchar, 1: getchar
+-    input  logic        block_signal,
+-    input  logic [31:0] syscall_out,
++    input  logic        block_signal,  // stalls writeback when I/O blocks
++    input  logic [31:0] syscall_out,   // getchar result
+ 
+-    output logic [31:0] final_reg_wdata,
+-    output logic [4:0]  final_reg_w_ind
++    output logic [31:0] final_reg_wdata, // selected register write data
++    output logic [4:0]  final_reg_w_addr // selected register write address
+ );
+ 
+     logic [31:0] normal_writeback_data;
+@@ -40,11 +43,11 @@ module writeback_mux (
+     end
+ 
+     always_comb begin
+-        final_reg_w_ind = rd;
++        final_reg_w_addr = rd;
+         final_reg_wdata = normal_writeback_data;
+ 
+         if (ecall_en && ecall_sel && !block_signal) begin
+-            final_reg_w_ind = 5'd10;       // a0
++            final_reg_w_addr = 5'd10;       // a0
+             final_reg_wdata = syscall_out; // getchar result
+         end
+     end

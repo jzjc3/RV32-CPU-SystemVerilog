@@ -1,25 +1,28 @@
+/** system_call.sv
+  * Handles ecall/ebreak side effects for getchar, putchar, and halt.
+  */
 module system_call #(
     parameter int WIDTH = 8
 ) (
-    input rst,
-    input clk,
+    input rst, // synchronous reset
+    input clk, // system clock
 
     input  logic ecall_en, // during writeback stage as well
     input  logic ebreak_en, // during writeback stage
     input  logic ecall_sel, // from register x17, 0: tx, 1: rx
 
-    input  logic rx_empty,
-    input  logic [WIDTH-1:0] rx_data,
-    output logic rx_pop,
+    input  logic rx_empty, // RX FIFO empty status
+    input  logic [WIDTH-1:0] rx_data, // byte read from RX FIFO
+    output logic rx_pop, // pop strobe for RX FIFO
     output logic [31:0] reg10_out, // feed to register x10
 
-    input  logic [31:0] reg10_in, // from register x10
-    input  logic tx_full,
-    output logic [7:0] tx_data,
-    output logic tx_push,
+    input  logic [31:0] reg10_in,  // from register x10
+    input  logic tx_full, // TX FIFO full status
+    output logic [7:0] tx_data, // byte written to TX FIFO
+    output logic tx_push, // push strobe for TX FIFO
 
-    output logic halt_signal,
-    output logic block_signal
+    output logic halt_signal, // asserted for ebreak halt
+    output logic block_signal // asserted when ecall cannot complete
     );
 
     always_comb begin

@@ -7,16 +7,16 @@
 import cpu_pkg::*;
 
 module PC (
-    input  logic        clk,
-    input  logic        rst,
+    input  logic        clk,           // system clock
+    input  logic        rst,           // synchronous reset
     input  logic        pc_en,          // if the PC module/device should be activicated
-    input  logic [6:0]  opcode,
+    input  logic [6:0]  opcode,        // latched instruction opcode
     input  logic [31:0] alu_out,        // for BRANCH: T/F signal for go to branch or no
     input  logic [31:0] imm_B,          // branching address depends on value of imm_B
-    input  logic [31:0] imm_J,
-    input  logic [31:0] imm_I,
+    input  logic [31:0] imm_J,         // JAL immediate offset
+    input  logic [31:0] imm_I,         // JALR immediate offset
     input  logic [31:0] rs1_data,       // JALR jump address depends on value stored in register 1
-    output logic [MEM_ADDR_BIT-1:0] pc
+    output logic [MEM_ADDR_BIT-1:0] pc // current program counter
 );
     logic [MEM_ADDR_BIT-1:0] next_pc;
 

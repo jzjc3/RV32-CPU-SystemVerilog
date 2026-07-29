@@ -1,10 +1,13 @@
 import cpu_pkg::*;
 
+/** bram.sv
+  * Synchronous word-addressed BRAM used for instruction fetch and data access.
+  */
 module bram #(
     parameter INIT_FILE = "mems/test0.mem"
 )(
-    input  logic rst,
-    input  logic clk,
+    input  logic rst, // synchronous reset for read data output
+    input  logic clk, // system clock
     input  logic mem_ren, // at mem1 state, can only read
     input  logic mem_wen, // at mem2 state: 1) if it's load: won't write back, 2) if it's store: will write back
     // note: if the instruction is STORE, for both mem1 and mem2 stage the address into BRAM will be eff_addr

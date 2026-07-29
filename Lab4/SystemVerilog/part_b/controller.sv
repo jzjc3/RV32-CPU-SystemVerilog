@@ -1,36 +1,34 @@
 /** controller.sv
-  *     instruction field extraction
-  *     instruction type determination
-  *     sequential: FSM
-  *     control signal output generation
+  * Instruction decode, immediate generation, ALU control, FSM sequencing,
+  * and control-signal generation for the multi-cycle CPU.
   */
 
 import cpu_pkg::*;
 
 // ecall block_signal, ebreak halt_signal as inputs
 module controller(
-  input  logic          clk,
-  input  logic          rst,
+  input  logic          clk,          // system clock
+  input  logic          rst,          // synchronous reset
   input  logic [31:0]   instr,         // from bram.sv 
   input  logic          halt_signal,   // from system_call.sv
   input  logic          block_signal,  // from system_call.sv
-  input  logic          ecall_sel,
+  input  logic          ecall_sel,     // selected ecall direction from x17
 
-  output state_t        state,
+  output state_t        state,         // current FSM state
 
   // fields parsed from instruction
-  output logic [6:0]    opcode,
-  output logic [4:0]    rd,
-  output logic [2:0]    func3,
-  output logic [4:0]    rs1,
-  output logic [4:0]    rs2,
-  output logic [6:0]    func7,
+  output logic [6:0]    opcode,        // decoded opcode field
+  output logic [4:0]    rd,            // decoded destination register address
+  output logic [2:0]    func3,         // decoded func3 field
+  output logic [4:0]    rs1,           // decoded source register 1 address
+  output logic [4:0]    rs2,           // decoded source register 2 address
+  output logic [6:0]    func7,         // decoded func7 field
 
-  output logic [31:0]   imm_I,
-  output logic [31:0]   imm_S,
-  output logic [31:0]   imm_B,
-  output logic [31:0]   imm_U,
-  output logic [31:0]   imm_J,
+  output logic [31:0]   imm_I,         // sign-extended I-type immediate
+  output logic [31:0]   imm_S,         // sign-extended S-type immediate
+  output logic [31:0]   imm_B,         // sign-extended B-type branch offset
+  output logic [31:0]   imm_U,         // U-type upper immediate
+  output logic [31:0]   imm_J,         // sign-extended J-type jump offset
 
   // control logics 
   output alu_op_t       alu_op_sel,    // ALU operation selection
@@ -65,7 +63,7 @@ module controller(
       imm_J = {{11{instr[31]}}, instr[31], instr[19:12], instr[20], instr[30:21], 1'b0};
   end
 
-  // OP_BRANCH itselves is a special case because it does comparison instead of arithmetic operation on the two data fed to alu 
+  // OP_BRANCH is a special case because it does comparison instead of arithmetic operation on the two data fed to alu
   always_comb begin : ALU_operation_selection
     case (opcode)
         OP_REGISTER,
@@ -141,16 +139,17 @@ module controller(
           HALT: next_state = HALT;
           default: next_state = HALT;
         endcase
-      end 
+      end
   end
 
+  // Sequential logic: latching FSM state
   always_ff @(posedge clk) begin
     if (rst) begin
       state <= FETCH;
     end
     else begin
       state <= next_state;
-    end 
+    end
   end
 
   // Output SIGNAL / DEVICE CONTROL AND ACTIVATION SIGNAL generation
