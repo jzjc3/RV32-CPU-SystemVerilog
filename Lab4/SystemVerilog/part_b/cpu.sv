@@ -34,9 +34,8 @@ module cpu #(
     state_t state;                  // FSM state 
 
     logic pc_en;                    // update PC register enable ctrl line
-    logic mem_fetch_en;             // memory read instr enable ctrl lin
-    logic mem1_ren;                 // read main RAM enable ctrl line
-    logic mem2_wen;                 // write to main RAM enable ctrl line
+    logic mem_ren;                 // read main RAM enable ctrl line
+    logic mem_wen;                 // write to main RAM enable ctrl line
     logic reg_wen;                  // write register enable ctrl line
     logic ecall_en;                 // peripheral I/O enable line
     logic ebreak_en;                // ebreak system call enable line
@@ -47,7 +46,6 @@ module cpu #(
     logic [MEM_ADDR_BIT-1:0] pc;
 
     // Instruction
-    logic [31:0] instr_fetch;       // fetched instruction
     logic [31:0] instr_reg;         // register that stores fetched instruction
 
     // Decode
@@ -94,7 +92,8 @@ module cpu #(
     logic [31:0] alu_out_reg;
 
     // BRAM
-    logic [31:0] mem1_data;
+    logic [31:0] mem_data_out;
+    logic [MEM_ADDR_BIT-1:0] mem_addr;
 
     // BRAM formatting
     logic        bram_mode;
@@ -118,6 +117,8 @@ module cpu #(
         ################################# */
     assign bram_mode = (opcode_reg == OP_STORE);
     assign ecall_sel = (reg_data1_reg == 32'd1); // based on register x17, determine it's putchar or getchar
+
+    assign mem_addr = (state == FETCH) ? pc : alu_out_reg[MEM_ADDR_BIT-1:0];
 
     /** #################################
         #### submodule instantiation ####
@@ -149,9 +150,8 @@ module cpu #(
 
         .pc_en(pc_en),
         .reg_wen(reg_wen),
-        .mem1_ren(mem1_ren),
-        .mem2_wen(mem2_wen),
-        .fetch_en(mem_fetch_en),
+        .mem_ren(mem_ren),
+        .mem_wen(mem_wen),
         .ecall_en(ecall_en),
         .ebreak_en(ebreak_en)
     );
@@ -208,21 +208,18 @@ module cpu #(
     ) u_bram (
         .rst(rst),
         .clk(clk),
-        .mem1_ren(mem1_ren),
-        .mem2_wen(mem2_wen),
-        .mem_fetch_en(mem_fetch_en),
-        .pc(pc),
-        .eff_addr(alu_out_reg[MEM_ADDR_BIT-1:0]),
-        .mem2_data_in(formatted_mem_out),
-        .mem1_data(mem1_data),
-        .instr_fetch(instr_fetch)
+        .mem_ren(mem_ren),
+        .mem_wen(mem_wen),
+        .mem_addr(mem_addr),
+        .mem_data_in(formatted_mem_out),
+        .mem_data_out(mem_data_out)
     );
 
     bram_formatting u_bram_formatting (
         .mode(bram_mode),
         .func3(func3_reg),
         .addr_offset(alu_out_reg[1:0]),
-        .mem_in(mem1_data),
+        .mem_in(mem_data_out),
         .reg_in(store_data_reg),
         .formatted_mem_out(formatted_mem_out)
     );
@@ -284,8 +281,8 @@ module cpu #(
         end
 
         else begin
-            // note: instr_fetch and mem1_data both retrieve from bram at the clock edge, so the new data is only available at the next cycle
-            if (state == IR)      instr_reg   <= instr_fetch;
+            // note: mem_data_out both retrieve from bram at the clock edge, so the new data is only available at the next cycle
+            if (state == IR)      instr_reg   <= mem_data_out;
             if (state == EXECUTE) alu_out_reg <= alu_out;
             if (state == DECODE) begin
                 alu_op_sel_reg    <= alu_op_sel;

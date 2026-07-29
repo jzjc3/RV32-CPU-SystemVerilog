@@ -36,9 +36,8 @@ module controller(
   output alu_op_t       alu_op_sel,    // ALU operation selection
   output logic          pc_en,         // update pc register enable line
   output logic          reg_wen,       // register write enable line
-  output logic          mem1_ren,      // retrieve from main memory enable lie
-  output logic          mem2_wen,      // write to main memory enable line
-  output logic          fetch_en,      // fetch instruction from main memory enable
+  output logic          mem_ren,      // retrieve from main memory enable lie
+  output logic          mem_wen,      // write to main memory enable line
   output logic          ecall_en,      // I/O from peripheral enable line
   output logic          ebreak_en      // system ebreak enable line
 );
@@ -167,9 +166,8 @@ module controller(
                        opcode == OP_JALR     ||
                        (ecall_en && ecall_sel && !block_signal)
                    );  // the rest of the states get to WRITEBACK but will only update PC during writeback
-  assign  mem1_ren = (state == MEM1) && ((opcode == OP_LOAD) || (opcode == OP_STORE));
-  assign  mem2_wen = (state == MEM2) && (opcode == OP_STORE);
-  assign  fetch_en  = (state == FETCH);
+  assign  mem_ren = (state == FETCH) || ((state == MEM1) && ((opcode == OP_LOAD) || (opcode == OP_STORE)));
+  assign  mem_wen = (state == MEM2) && (opcode == OP_STORE);
   assign  ecall_en  = (state == WRITEBACK) & (instr == 32'h00000073);
   assign  ebreak_en = (state == WRITEBACK) & (instr == 32'h00100073);
 
